@@ -87,11 +87,14 @@ void loop() {
   if (now - lastLog >= 5000) {
     lastLog = now;
     Serial.printf(
-        "[main] rec=%d rate=%u ring=%u dropped=%u files=%d free=%uKB bt=%d\n",
+        "[main] rec=%d rate=%u ring=%u dropped=%u files=%d free=%uKB bt=%d "
+        "heap=%u minheap=%u\n",
         g_recorder.isRecording() ? 1 : 0, g_recorder.rateHz(),
         (unsigned)g_recorder.ring().size(),
         (unsigned)g_recorder.ring().dropped(), storageFileCount(),
-        (unsigned)storageFreeKb(), btConnected() ? 1 : 0);
+        (unsigned)storageFreeKb(), btConnected() ? 1 : 0,
+        (unsigned)ESP.getFreeHeap(),
+        (unsigned)esp_get_minimum_free_heap_size());
   }
 
   delay(50);

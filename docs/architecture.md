@@ -53,7 +53,7 @@ flowchart LR
 | Task | Core | Priority | Period | Responsibility |
 |---|---|---|---|---|
 | `sensorTask` | 1 | 5 | `1000 / rate` ms (`vTaskDelayUntil`) | Burst-read 14 bytes from MPU-6050, convert to SI units, push `Sample` into ring buffer, count overflows |
-| `storageTask` | 1 | 3 | continuous | Drain ring buffer into a 4 KB text buffer, write to SD every ≥ 2 KB or 250 ms, `flush()` every 1 s, close + fsync on STOP |
+| `storageTask` | 1 | 3 | continuous | Drain ring buffer into a 32 KB text buffer, write to SD when it holds ≥ 24 KB **or** every 2 s (whichever first), `flush()` every 2 s, close + fsync on STOP. Thresholds are runtime-tunable via `/config.txt` |
 | `btTask` | 0 | 2 | continuous | Read SPP bytes, assemble lines, dispatch commands, stream files |
 | `loopTask` (Arduino) | 1 | 1 | 100 ms | LED status pattern, watchdog-ish health reporting over USB serial |
 
@@ -78,7 +78,38 @@ struct Sample {            // 24 bytes
   file footer so the phone knows the data is gapped.
 - MPU-6050 configuration: DLPF 44 Hz, accel ±4 g, gyro ±500 dps (constants in `config.h`).
 
-### 2.4 File format & naming
+### 2.4 Storage write cadence & runtime configuration
+
+Samples are never written to the card one at a time. The storage task formats each sample into a
+CSV line and appends it to a static 32 KB RAM buffer; the buffer is written to the card when it
+reaches a **size threshold** *or* a **time interval** elapses, whichever comes first. A separate
+`flush()` (fsync) cadence bounds how much data is lost if power is cut mid-session.
+
+| Setting | Default | Range | Meaning |
+|---|---|---|---|
+| `write_threshold` | 24576 (24 KB) | 512 – 32768 | write the buffer once it holds this many bytes |
+| `write_interval_ms` | 2000 | 100 – 60000 | ...or once this long has elapsed since the last write |
+| `flush_interval_ms` | 2000 | 100 – 60000 | fsync cadence (data-loss window on power loss) |
+
+At the default 200 Hz (~12 KB/s of text) the size threshold and the 2 s interval coincide, giving
+roughly one card write every 2 s. At 1000 Hz (~60 KB/s) the size threshold dominates and the
+buffer is written every ~0.4 s. Either way the number of SPI transactions stays moderate.
+
+These values can be overridden at boot by a plain-text `/config.txt` on the SD card:
+
+```
+# /config.txt — optional; missing keys keep their compiled-in default
+write_threshold=24576
+write_interval_ms=2000
+flush_interval_ms=2000
+```
+
+The file is parsed once in `storageInit()` after the card is mounted. Blank lines and lines
+starting with `#` or `;` are ignored; unknown keys and out-of-range values are logged and
+discarded, so a malformed file can never prevent a recording. The effective values are printed
+on the USB serial console at boot.
+
+### 2.5 File format & naming
 
 - Directory `/data`, files `pm_0001.csv`, `pm_0002.csv`, … index persisted in NVS
   (`Preferences`), survives reboots.
@@ -90,7 +121,7 @@ struct Sample {            // 24 bytes
 - Data lines: `1234567,0.1234,-9.8012,0.4321,1.20,-0.50,3.10`
 - Footer on STOP: `# samples=41230 dropped=0`
 
-### 2.5 Bluetooth service (SPP / RFCOMM)
+### 2.6 Bluetooth service (SPP / RFCOMM)
 
 `BluetoothSerial`, well-known SPP UUID `00001101-0000-1000-8000-00805F9B34FB`, device name
 `paddle-meter`. Line-based ASCII protocol, `\n` terminated. RFCOMM provides reliability and
@@ -126,7 +157,7 @@ sequenceDiagram
     E-->>A: DELETED
 ```
 
-### 2.6 Error handling
+### 2.7 Error handling
 
 - SD init failure → fast-blink LED, `START`/`LIST` answer `ERR sd_not_ready`.
 - BT disconnect during recording → recording continues; during transfer → transfer aborted,
@@ -194,6 +225,7 @@ paddle-meter/
 │       ├── Sample.h                   # Sample struct + ring buffer
 │       ├── sensor_task.h/.cpp         # MPU-6050 sampling
 │       ├── storage_task.h/.cpp        # SD writer, file naming, NVS index
+│       ├── settings.h/.cpp            # /config.txt parser + runtime settings
 │       ├── bt_service.h/.cpp          # SPP command protocol + CRC32
 │       └── recorder.h/.cpp            # shared state machine
 ├── android/                           # Android Studio project
@@ -238,6 +270,8 @@ connect → list/download/delete recordings.
 | CRC-32 end-to-end | integrity without per-chunk ACK overhead; matches `java.util.zip.CRC32` |
 | Delete driven by phone | deletion happens only after verified transfer — no data loss on flaky links |
 | Lock-free SPSC buffer | sampling never blocks on SD latency spikes |
+| Buffered, time/size-triggered SD writes | avoids one SPI transaction per sample; keeps write count moderate at any rate |
+| `/config.txt` on SD for tuning | user-editable without reflashing; defaults + clamping mean a bad file can't break recording |
 | App-specific external dir | no storage permission, files still user-accessible |
 
 Risks: RFCOMM throughput makes multi-MB transfers take minutes (acceptable for post-session

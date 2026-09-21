@@ -1,13 +1,16 @@
 // storage_task.cpp — SD card writer.
 //
 // Consumes samples from the shared ring buffer and appends them to a CSV file
-// under /data. Text is accumulated in a RAM buffer and flushed to the card in
-// >= 2 KB blocks to avoid one SPI transaction per sample. A periodic flush()
-// bounds the amount of data lost if power is cut mid-session.
+// under /data. Text is accumulated in a RAM buffer and written to the card
+// only when the buffer reaches a size threshold OR a time interval elapses
+// (whichever comes first), so there is never one SPI transaction per sample.
+// A separate periodic flush() bounds the amount of data lost if power is cut.
+// The threshold/interval values are runtime-tunable via /config.txt.
 #include "storage_task.h"
 
 #include "config.h"
 #include "recorder.h"
+#include "settings.h"
 #include <Preferences.h>
 #include <SD.h>
 #include <SPI.h>
@@ -17,11 +20,16 @@ static File s_file;
 static bool s_sdReady = false;
 static bool s_fileOpen = false;
 static uint32_t s_fileIndex = 0;
+static uint32_t s_lastWriteMs = 0;
 static uint32_t s_lastFlushMs = 0;
 static char s_currentName[32] = {0};
 
-// Text accumulation buffer.
-static char s_buf[SD_WRITE_THRESHOLD * 2];
+// Runtime-tunable storage settings (defaults, overridable via /config.txt).
+static Settings s_settings;
+
+// Text accumulation buffer. Sized to hold at least one full CSV line plus the
+// write threshold so a single line always fits without splitting.
+static char s_buf[SD_TEXT_BUF_MAX];
 static size_t s_bufLen = 0;
 
 static Preferences s_prefs;
@@ -47,7 +55,7 @@ static void flushBuffer(bool force) {
   if (!s_fileOpen || s_bufLen == 0) {
     return;
   }
-  if (!force && s_bufLen < SD_WRITE_THRESHOLD) {
+  if (!force && s_bufLen < s_settings.writeThreshold) {
     return;
   }
   const size_t written = s_file.write((const uint8_t *)s_buf, s_bufLen);
@@ -90,6 +98,11 @@ bool storageInit() {
   if (!SD.exists(DATA_DIR)) {
     SD.mkdir(DATA_DIR);
   }
+
+  // Load runtime settings from /config.txt (falls back to compiled defaults).
+  settingsLoad(s_settings);
+  settingsLog(s_settings);
+
   loadFileIndex();
   Serial.printf("[storage] SD ready, %u KB free\n", (unsigned)storageFreeKb());
   return true;
@@ -117,6 +130,7 @@ bool storageStartSession() {
   saveFileIndex();
 
   s_bufLen = 0;
+  s_lastWriteMs = millis();
   s_lastFlushMs = millis();
   s_fileOpen = true;
 
@@ -220,11 +234,20 @@ void storageTask(void *param) {
         didWork = true;
       }
 
-      flushBuffer(false);
-
       const uint32_t now = millis();
-      if (now - s_lastFlushMs >= SD_FLUSH_INTERVAL_MS) {
+
+      // Write to the card when the buffer is full enough OR the write
+      // interval has elapsed, whichever comes first. This keeps the number
+      // of SPI transactions moderate even at high sample rates.
+      if (s_bufLen >= s_settings.writeThreshold ||
+          now - s_lastWriteMs >= s_settings.writeIntervalMs) {
         flushBuffer(true);
+        s_lastWriteMs = now;
+      }
+
+      // fsync on its own (usually slower) cadence to bound data loss if
+      // power is cut mid-session.
+      if (now - s_lastFlushMs >= s_settings.flushIntervalMs) {
         s_file.flush();
         s_lastFlushMs = now;
       }

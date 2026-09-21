@@ -47,9 +47,28 @@
 // ---------------------------------------------------------------------------
 // Ring buffer / storage
 // ---------------------------------------------------------------------------
-#define RING_CAPACITY 1024        // samples (~24 KB)
-#define SD_WRITE_THRESHOLD 2048   // flush text buffer to SD at >= 2 KB
-#define SD_FLUSH_INTERVAL_MS 1000 // periodic flush() to bound data loss
+#define RING_CAPACITY 1024 // samples (~24 KB)
+
+// Static text accumulation buffer. Must hold at least one full CSV line plus
+// the write threshold so a single line always fits without splitting.
+#define SD_TEXT_BUF_MAX 32768 // 32 KB
+
+// Defaults for the runtime-tunable storage settings. These can be overridden
+// at boot by a /config.txt file on the SD card (see settings.h); the compiled
+// values below are used for any key that is missing or invalid.
+#define SD_WRITE_THRESHOLD_DEFAULT 24576  // write to SD at >= 24 KB
+#define SD_WRITE_INTERVAL_MS_DEFAULT 2000 // ...or every 2 s, whichever first
+#define SD_FLUSH_INTERVAL_MS_DEFAULT 2000 // fsync cadence (bounds data loss)
+
+// Clamp ranges applied to values read from /config.txt.
+#define SD_WRITE_THRESHOLD_MIN 512
+#define SD_WRITE_THRESHOLD_MAX SD_TEXT_BUF_MAX
+#define SD_WRITE_INTERVAL_MS_MIN 100
+#define SD_WRITE_INTERVAL_MS_MAX 60000
+#define SD_FLUSH_INTERVAL_MS_MIN 100
+#define SD_FLUSH_INTERVAL_MS_MAX 60000
+
+#define CONFIG_PATH "/config.txt"
 #define DATA_DIR "/data"
 #define FILE_PREFIX "pm_"
 #define FILE_SUFFIX ".csv"
