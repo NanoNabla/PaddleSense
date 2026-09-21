@@ -2,5 +2,5 @@
 <resources>
     <!-- Base theme; the actual colours are provided by the Compose Material 3
          theme in ui/theme/Theme.kt. -->
-    <style name="Theme.PaddleMeter" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.PaddleSense" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

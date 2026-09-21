@@ -1,14 +1,14 @@
-package com.paddlemeter.app.viewmodel
+package com.paddlesense.app.viewmodel
 
 import android.app.Application
 import android.bluetooth.BluetoothDevice
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.paddlemeter.app.data.RecordingRepository
-import com.paddlemeter.app.data.model.DeviceStatus
-import com.paddlemeter.app.data.model.LocalFile
-import com.paddlemeter.app.data.model.RemoteFile
-import com.paddlemeter.app.data.model.TransferProgress
+import com.paddlesense.app.data.RecordingRepository
+import com.paddlesense.app.data.model.DeviceStatus
+import com.paddlesense.app.data.model.LocalFile
+import com.paddlesense.app.data.model.RemoteFile
+import com.paddlesense.app.data.model.TransferProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

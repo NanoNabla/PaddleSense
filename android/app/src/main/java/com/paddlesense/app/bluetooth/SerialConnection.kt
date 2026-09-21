@@ -1,4 +1,4 @@
-package com.paddlemeter.app.bluetooth
+package com.paddlesense.app.bluetooth
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter

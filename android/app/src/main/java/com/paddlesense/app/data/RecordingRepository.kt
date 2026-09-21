@@ -1,13 +1,13 @@
-package com.paddlemeter.app.data
+package com.paddlesense.app.data
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Environment
-import com.paddlemeter.app.bluetooth.PaddleProtocol
-import com.paddlemeter.app.bluetooth.SerialConnection
-import com.paddlemeter.app.data.model.DeviceStatus
-import com.paddlemeter.app.data.model.LocalFile
-import com.paddlemeter.app.data.model.RemoteFile
+import com.paddlesense.app.bluetooth.PaddleSenseProtocol
+import com.paddlesense.app.bluetooth.SerialConnection
+import com.paddlesense.app.data.model.DeviceStatus
+import com.paddlesense.app.data.model.LocalFile
+import com.paddlesense.app.data.model.RemoteFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -23,7 +23,7 @@ import java.io.FileOutputStream
 class RecordingRepository(private val context: Context) {
 
     private val connection = SerialConnection()
-    private val protocol = PaddleProtocol(connection)
+    private val protocol = PaddleSenseProtocol(connection)
 
     val isConnected: Boolean get() = connection.isConnected
 
@@ -31,7 +31,7 @@ class RecordingRepository(private val context: Context) {
     val downloadDir: File
         get() = File(
             context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-            "paddlemeter"
+            "paddlesense"
         ).apply { if (!exists()) mkdirs() }
 
     suspend fun connect(device: BluetoothDevice) = connection.connect(device)

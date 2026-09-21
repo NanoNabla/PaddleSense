@@ -1,4 +1,4 @@
-# Paddle Meter
+# PaddleSense
 
 An ESP32 data logger that samples an MPU-6050 at high rate, stores time series
 on an SD card, and serves them over Bluetooth Classic (SPP) to an Android app
@@ -9,14 +9,16 @@ ESP32 + MPU-6050 + SD card  ──Bluetooth Classic SPP──►  Android app
    (sampling + storage)                                  (list/download/delete)
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for the full design.
+See [`docs/architecture.md`](docs/architecture.md) for the full design and
+[`docs/protocol.md`](docs/protocol.md) for the wire protocol and file format
+(the contract shared by the firmware and the app).
 
 ---
 
 ## Repository layout
 
 ```
-paddle-meter/
+paddlesense/
 ├── firmware/     PlatformIO project (ESP32, Arduino framework)
 ├── android/      Android Studio project (Kotlin, Jetpack Compose)
 ├── tools/        Host-side helper scripts (CSV conversion)
@@ -66,14 +68,14 @@ No external libraries are needed — `BluetoothSerial`, `SD`, `Wire` and
 ### Behavior
 
 - Samples the MPU-6050 at **200 Hz** by default (configurable 50–1000 Hz).
-- Writes CSV files to `/data/pm_0001.csv`, `pm_0002.csv`, … (index kept in NVS).
+- Writes CSV files to `/data/ps_0001.csv`, `ps_0002.csv`, … (index kept in NVS).
 - Status LED: **solid** = recording, **slow blink** = idle, **fast blink** = error.
 - Recording is started/stopped from the phone (`START` / `STOP`).
 
 ### File format
 
 ```
-# paddle-meter v1 rate=200 arange=4g grange=500dps
+# paddlesense v1 rate=200 arange=4g grange=500dps
 t_us,ax,ay,az,gx,gy,gz
 1234567,0.1234,-9.8012,0.4321,1.20,-0.50,3.10
 ...
@@ -112,7 +114,7 @@ matches `java.util.zip.CRC32` on the phone.
 
 ### Usage
 
-1. Pair the ESP32 (`paddle-meter`) in Android Bluetooth settings.
+1. Pair the ESP32 (`paddlesense`) in Android Bluetooth settings.
 2. Open the app, grant the Bluetooth permission, tap the device to connect.
 3. Tap **Manage recordings**:
    - **Start / Stop** a recording session.
@@ -122,12 +124,12 @@ matches `java.util.zip.CRC32` on the phone.
      (toggle "Delete on device after download" to keep it).
    - Downloaded files are listed under "Downloaded to phone" and stored in the
      app-specific external files directory
-     (`Android/data/com.paddlemeter.app/files/Documents/paddlemeter`).
+     (`Android/data/com.paddlesense.app/files/Documents/paddlesense`).
 
 ### Extending with data processing
 
 Downloaded CSVs are parsed by
-[`TimeSeriesReader`](android/app/src/main/java/com/paddlemeter/app/data/timeseries/TimeSeriesReader.kt),
+[`TimeSeriesReader`](android/app/src/main/java/com/paddlesense/app/data/timeseries/TimeSeriesReader.kt),
 which returns a `TimeSeries` (metadata + `List<TimeSeriesSample>`). Add your
 processing pipeline on top of that type — the UI and transfer layers do not need
 to change.
@@ -136,18 +138,18 @@ to change.
 
 ## 4. Helper tools
 
-[`tools/paddle_csv.py`](tools/paddle_csv.py) is a dependency-free Python 3
+[`tools/paddlesense_csv.py`](tools/paddlesense_csv.py) is a dependency-free Python 3
 utility that converts recordings in both directions:
 
 ```bash
-# paddle-meter recording -> readable CSV (index, seconds, vector magnitudes)
-python3 tools/paddle_csv.py to-csv pm_0001.csv -o pm_0001.readable.csv
+# paddlesense recording -> readable CSV (index, seconds, vector magnitudes)
+python3 tools/paddlesense_csv.py to-csv ps_0001.csv -o ps_0001.readable.csv
 
-# readable CSV (or any CSV with named columns) -> paddle-meter recording
-python3 tools/paddle_csv.py to-paddle pm_0001.readable.csv -o pm_0001.csv
+# readable CSV (or any CSV with named columns) -> paddlesense recording
+python3 tools/paddlesense_csv.py to-paddlesense ps_0001.readable.csv -o ps_0001.csv
 
 # auto-detect the direction
-python3 tools/paddle_csv.py auto somefile.csv -o out.csv
+python3 tools/paddlesense_csv.py auto somefile.csv -o out.csv
 ```
 
 The round-trip is lossless (metadata is preserved as `#` comments). See

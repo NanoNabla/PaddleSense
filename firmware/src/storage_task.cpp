@@ -116,7 +116,7 @@ bool storageStartSession() {
     return true;
   }
 
-  // Build the next file name: /data/pm_0001.csv
+  // Build the next file name: /data/ps_0001.csv
   snprintf(s_currentName, sizeof(s_currentName), "%s/%s%04u%s", DATA_DIR,
            FILE_PREFIX, (unsigned)(s_fileIndex + 1), FILE_SUFFIX);
 
@@ -138,7 +138,7 @@ bool storageStartSession() {
   char header[128];
   int n =
       snprintf(header, sizeof(header),
-               "# paddle-meter v%s rate=%u arange=%dg grange=%ddps\n"
+               "# paddlesense v%s rate=%u arange=%dg grange=%ddps\n"
                "t_us,ax,ay,az,gx,gy,gz\n",
                FW_VERSION, g_recorder.rateHz(), ACCEL_RANGE_G, GYRO_RANGE_DPS);
   appendToBuffer(header, (size_t)n);

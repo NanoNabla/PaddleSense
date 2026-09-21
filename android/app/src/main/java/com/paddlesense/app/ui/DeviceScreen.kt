@@ -1,4 +1,4 @@
-package com.paddlemeter.app.ui
+package com.paddlesense.app.ui
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
@@ -35,11 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.paddlemeter.app.viewmodel.UiState
+import com.paddlesense.app.viewmodel.UiState
 
 /**
  * Device selection screen: lists paired Bluetooth devices and lets the user
- * connect to the paddle-meter.
+ * connect to the paddlesense.
  */
 @Composable
 fun DeviceScreen(
@@ -72,7 +72,7 @@ fun DeviceScreen(
             .fillMaxSize()
             .padding(16.dp),
     ) {
-        Text("Paddle Meter", style = MaterialTheme.typography.headlineMedium)
+        Text("PaddleSense", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(4.dp))
         Text(
             "Connect to your ESP32 data logger over Bluetooth.",
@@ -116,7 +116,7 @@ fun DeviceScreen(
 
         if (paired.isEmpty()) {
             Text(
-                "No paired devices found. Pair 'paddle-meter' in Android Bluetooth settings first.",
+                "No paired devices found. Pair 'paddlesense' in Android Bluetooth settings first.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         } else {

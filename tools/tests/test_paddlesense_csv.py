@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Unit tests for tools/paddle_csv.py.
+"""Unit tests for tools/paddlesense_csv.py.
 
 Run with either::
 
     python3 -m unittest discover -s tools/tests
-    python3 tools/tests/test_paddle_csv.py
+    python3 tools/tests/test_paddlesense_csv.py
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ import unittest
 # Make ``tools/`` importable regardless of the working directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import paddle_csv  # noqa: E402
+import paddlesense_csv  # noqa: E402
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "fixtures", "pm_0001.csv")
+                       "fixtures", "ps_0001.csv")
 
 
 def _read_fixture() -> str:
@@ -30,9 +30,9 @@ def _read_fixture() -> str:
 
 class MetaParsingTests(unittest.TestCase):
     def test_header_parsed(self):
-        meta = paddle_csv.parse_meta_line(
-            "# paddle-meter v1 rate=200 arange=4g grange=500dps",
-            paddle_csv.Meta(),
+        meta = paddlesense_csv.parse_meta_line(
+            "# paddlesense v1 rate=200 arange=4g grange=500dps",
+            paddlesense_csv.Meta(),
         )
         self.assertEqual(meta.version, "1")
         self.assertEqual(meta.rate_hz, 200)
@@ -40,16 +40,16 @@ class MetaParsingTests(unittest.TestCase):
         self.assertEqual(meta.gyro_range_dps, 500)
 
     def test_footer_parsed(self):
-        meta = paddle_csv.parse_meta_line(
-            "# samples=41230 dropped=7", paddle_csv.Meta())
+        meta = paddlesense_csv.parse_meta_line(
+            "# samples=41230 dropped=7", paddlesense_csv.Meta())
         self.assertEqual(meta.sample_count, 41230)
         self.assertEqual(meta.dropped, 7)
 
     def test_header_roundtrip(self):
-        meta = paddle_csv.Meta(version="2", rate_hz=100,
+        meta = paddlesense_csv.Meta(version="2", rate_hz=100,
                                accel_range_g=8, gyro_range_dps=1000)
-        reparsed = paddle_csv.parse_meta_line(meta.header_line(),
-                                              paddle_csv.Meta())
+        reparsed = paddlesense_csv.parse_meta_line(meta.header_line(),
+                                              paddlesense_csv.Meta())
         self.assertEqual(reparsed.version, "2")
         self.assertEqual(reparsed.rate_hz, 100)
         self.assertEqual(reparsed.accel_range_g, 8)
@@ -59,14 +59,14 @@ class MetaParsingTests(unittest.TestCase):
 class ToCsvTests(unittest.TestCase):
     def test_basic_conversion(self):
         out = io.StringIO()
-        n = paddle_csv.paddle_to_readable(io.StringIO(_read_fixture()), out)
+        n = paddlesense_csv.paddlesense_to_readable(io.StringIO(_read_fixture()), out)
         self.assertEqual(n, 5)
 
         lines = out.getvalue().splitlines()
         # Metadata preserved as comments.
-        self.assertTrue(lines[0].startswith("# paddle-meter v1 rate=200"))
+        self.assertTrue(lines[0].startswith("# paddlesense v1 rate=200"))
         # Header row.
-        self.assertEqual(lines[2], ",".join(paddle_csv.READABLE_COLUMNS))
+        self.assertEqual(lines[2], ",".join(paddlesense_csv.READABLE_COLUMNS))
         # Footer preserved at the end.
         self.assertEqual(lines[-1], "# samples=5 dropped=0")
 
@@ -81,7 +81,7 @@ class ToCsvTests(unittest.TestCase):
 
     def test_no_derived_columns(self):
         out = io.StringIO()
-        paddle_csv.paddle_to_readable(io.StringIO(_read_fixture()), out,
+        paddlesense_csv.paddlesense_to_readable(io.StringIO(_read_fixture()), out,
                                       derived=False)
         header = out.getvalue().splitlines()[2]
         self.assertNotIn("accel_mag", header)
@@ -89,30 +89,30 @@ class ToCsvTests(unittest.TestCase):
 
     def test_skips_malformed_rows(self):
         data = (
-            "# paddle-meter v1 rate=200 arange=4g grange=500dps\n"
+            "# paddlesense v1 rate=200 arange=4g grange=500dps\n"
             "t_us,ax,ay,az,gx,gy,gz\n"
             "0,1,2,3,4,5,6\n"
             "garbage,row\n"
             "5000,1,2,3,4,5,6\n"
         )
         out = io.StringIO()
-        n = paddle_csv.paddle_to_readable(io.StringIO(data), out)
+        n = paddlesense_csv.paddlesense_to_readable(io.StringIO(data), out)
         self.assertEqual(n, 2)
 
 
-class ToPaddleTests(unittest.TestCase):
+class TopaddlesenseTests(unittest.TestCase):
     def test_readable_roundtrip(self):
-        # paddle -> readable -> paddle should preserve samples and metadata.
+        # paddlesense -> readable -> paddlesense should preserve samples and metadata.
         readable = io.StringIO()
-        paddle_csv.paddle_to_readable(io.StringIO(_read_fixture()), readable)
+        paddlesense_csv.paddlesense_to_readable(io.StringIO(_read_fixture()), readable)
 
         out = io.StringIO()
-        n = paddle_csv.csv_to_paddle(io.StringIO(readable.getvalue()), out)
+        n = paddlesense_csv.csv_to_paddlesense(io.StringIO(readable.getvalue()), out)
         self.assertEqual(n, 5)
 
         lines = out.getvalue().splitlines()
         self.assertEqual(lines[0],
-                         "# paddle-meter v1 rate=200 arange=4g grange=500dps")
+                         "# paddlesense v1 rate=200 arange=4g grange=500dps")
         self.assertEqual(lines[1], "t_us,ax,ay,az,gx,gy,gz")
         self.assertEqual(lines[2], "0,0.1234,-9.8012,0.4321,1.20,-0.50,3.10")
         self.assertEqual(lines[-1], "# samples=5 dropped=0")
@@ -124,7 +124,7 @@ class ToPaddleTests(unittest.TestCase):
             "0.5,1.1,2.1,3.1,4.1,5.1,6.1\n"
         )
         out = io.StringIO()
-        n = paddle_csv.csv_to_paddle(io.StringIO(data), out)
+        n = paddlesense_csv.csv_to_paddlesense(io.StringIO(data), out)
         self.assertEqual(n, 2)
         lines = out.getvalue().splitlines()
         # 0.5 s -> 500000 us
@@ -138,8 +138,8 @@ class ToPaddleTests(unittest.TestCase):
             "1,2,3,4,5,6\n"
         )
         out = io.StringIO()
-        n = paddle_csv.csv_to_paddle(io.StringIO(data), out,
-                                     meta=paddle_csv.Meta(rate_hz=100))
+        n = paddlesense_csv.csv_to_paddlesense(io.StringIO(data), out,
+                                     meta=paddlesense_csv.Meta(rate_hz=100))
         self.assertEqual(n, 3)
         lines = out.getvalue().splitlines()
         # 100 Hz -> 10000 us period.
@@ -150,33 +150,33 @@ class ToPaddleTests(unittest.TestCase):
     def test_missing_axis_raises(self):
         data = "t_us,ax,ay,az,gx,gy\n0,1,2,3,4,5\n"
         with self.assertRaises(ValueError):
-            paddle_csv.csv_to_paddle(io.StringIO(data), io.StringIO())
+            paddlesense_csv.csv_to_paddlesense(io.StringIO(data), io.StringIO())
 
     def test_cli_overrides_metadata(self):
         out = io.StringIO()
-        paddle_csv.csv_to_paddle(
+        paddlesense_csv.csv_to_paddlesense(
             io.StringIO(_read_fixture()), out,
-            meta=paddle_csv.Meta(rate_hz=100, accel_range_g=8,
+            meta=paddlesense_csv.Meta(rate_hz=100, accel_range_g=8,
                                  gyro_range_dps=1000, version="9"),
         )
         self.assertEqual(
             out.getvalue().splitlines()[0],
-            "# paddle-meter v9 rate=100 arange=8g grange=1000dps",
+            "# paddlesense v9 rate=100 arange=8g grange=1000dps",
         )
 
 
 class DetectionTests(unittest.TestCase):
-    def test_detects_paddle_file(self):
-        self.assertTrue(paddle_csv._is_paddle_file(FIXTURE))
+    def test_detects_paddlesense_file(self):
+        self.assertTrue(paddlesense_csv._is_paddlesense_file(FIXTURE))
 
     def test_detects_readable_file(self):
         readable = io.StringIO()
-        paddle_csv.paddle_to_readable(io.StringIO(_read_fixture()), readable)
+        paddlesense_csv.paddlesense_to_readable(io.StringIO(_read_fixture()), readable)
         tmp = os.path.join(os.path.dirname(FIXTURE), "_readable_tmp.csv")
         try:
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(readable.getvalue())
-            self.assertFalse(paddle_csv._is_paddle_file(tmp))
+            self.assertFalse(paddlesense_csv._is_paddlesense_file(tmp))
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)

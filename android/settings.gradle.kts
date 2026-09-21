@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PaddleMeter"
+rootProject.name = "PaddleSense"
 include(":app")

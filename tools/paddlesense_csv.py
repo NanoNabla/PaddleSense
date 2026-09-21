@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""paddle_csv.py — convert paddle-meter recordings to/from a readable CSV.
+"""paddlesense_csv.py — convert paddlesense recordings to/from a readable CSV.
 
-The paddle-meter firmware (see ``firmware/src/storage_task.cpp``) writes compact
+The paddlesense firmware (see ``firmware/src/storage_task.cpp``) writes compact
 CSV recordings to the SD card::
 
-    # paddle-meter v1 rate=200 arange=4g grange=500dps
+    # paddlesense v1 rate=200 arange=4g grange=500dps
     t_us,ax,ay,az,gx,gy,gz
     1234567,0.1234,-9.8012,0.4321,1.20,-0.50,3.10
     ...
@@ -13,14 +13,14 @@ CSV recordings to the SD card::
 This tool has two directions:
 
 ``to-csv``
-    Expand a paddle-meter recording into a *readable* CSV: one row per sample
+    Expand a paddlesense recording into a *readable* CSV: one row per sample
     with a row index, the timestamp in both microseconds and seconds, and
     derived acceleration / angular-rate magnitudes. Metadata is preserved as
     leading ``#`` comment lines so the file can be converted back losslessly.
 
-``to-paddle``
+``to-paddlesense``
     Take a CSV (the readable form above, or any CSV with recognisable column
-    names) and emit a paddle-meter recording that the firmware / Android
+    names) and emit a paddlesense recording that the firmware / Android
     ``TimeSeriesReader`` can consume.
 
 Both directions are pure standard library and stream row-by-row, so multi-MB
@@ -28,17 +28,17 @@ recordings convert without loading everything into memory.
 
 Examples
 --------
-    # paddle recording -> readable csv
-    python3 tools/paddle_csv.py to-csv pm_0001.csv -o pm_0001.readable.csv
+    # paddlesense recording -> readable csv
+    python3 tools/paddlesense_csv.py to-csv ps_0001.csv -o ps_0001.readable.csv
 
-    # readable csv -> paddle recording (metadata taken from the # header)
-    python3 tools/paddle_csv.py to-paddle pm_0001.readable.csv -o pm_0001.csv
+    # readable csv -> paddlesense recording (metadata taken from the # header)
+    python3 tools/paddlesense_csv.py to-paddlesense ps_0001.readable.csv -o ps_0001.csv
 
-    # arbitrary csv with named columns -> paddle recording at 100 Hz
-    python3 tools/paddle_csv.py to-paddle raw.csv -o pm_0002.csv --rate 100
+    # arbitrary csv with named columns -> paddlesense recording at 100 Hz
+    python3 tools/paddlesense_csv.py to-paddlesense raw.csv -o ps_0002.csv --rate 100
 
     # auto-detect direction
-    python3 tools/paddle_csv.py auto somefile.csv -o out.csv
+    python3 tools/paddlesense_csv.py auto somefile.csv -o out.csv
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ from typing import Iterable, Iterator, Optional, TextIO
 # Format constants
 # ---------------------------------------------------------------------------
 
-PADDLE_MARKER = "paddle-meter"
+PADDLESENSE_MARKER = "paddlesense"
 COLUMNS = ("t_us", "ax", "ay", "az", "gx", "gy", "gz")
 
 DEFAULT_VERSION = "1"
@@ -79,7 +79,7 @@ READABLE_COLUMNS = (
     "gyro_mag",
 )
 
-# Column-name aliases accepted by ``to-paddle`` (normalised: lower, _ for space).
+# Column-name aliases accepted by ``to-paddlesense`` (normalised: lower, _ for space).
 _TIME_ALIASES = {
     "t_us": "us",
     "time_us": "us",
@@ -107,7 +107,7 @@ _AXIS_ALIASES = {
 }
 
 _META_HEADER_RE = re.compile(
-    r"#\s*paddle-meter\s+v(?P<version>\S+)"
+    r"#\s*paddlesense\s+v(?P<version>\S+)"
     r"(?:\s+rate=(?P<rate>\d+))?"
     r"(?:\s+arange=(?P<arange>\d+)g)?"
     r"(?:\s+grange=(?P<grange>\d+)dps)?"
@@ -124,7 +124,7 @@ _META_FOOTER_RE = re.compile(
 
 @dataclass
 class Meta:
-    """Recording metadata carried in the paddle-meter header/footer comments."""
+    """Recording metadata carried in the paddlesense header/footer comments."""
 
     version: str = DEFAULT_VERSION
     rate_hz: int = DEFAULT_RATE_HZ
@@ -135,7 +135,7 @@ class Meta:
 
     def header_line(self) -> str:
         return (
-            f"# {PADDLE_MARKER} v{self.version} rate={self.rate_hz} "
+            f"# {PADDLESENSE_MARKER} v{self.version} rate={self.rate_hz} "
             f"arange={self.accel_range_g}g grange={self.gyro_range_dps}dps"
         )
 
@@ -184,10 +184,10 @@ def _fmt(value: float, precision: int) -> str:
     return f"{value:.{precision}f}"
 
 
-def _is_paddle_file(path: str) -> bool:
-    """Heuristically decide whether *path* is a paddle-meter recording.
+def _is_paddlesense_file(path: str) -> bool:
+    """Heuristically decide whether *path* is a paddlesense recording.
 
-    A readable CSV produced by ``to-csv`` also carries the ``# paddle-meter``
+    A readable CSV produced by ``to-csv`` also carries the ``# paddlesense``
     header comment, so the presence of an ``index,`` column header takes
     precedence over the marker.
     """
@@ -200,7 +200,7 @@ def _is_paddle_file(path: str) -> bool:
                     break
                 if line.strip().lower().startswith("index,"):
                     return False
-                if PADDLE_MARKER in line:
+                if PADDLESENSE_MARKER in line:
                     saw_marker = True
             return saw_marker
     except OSError:
@@ -208,18 +208,18 @@ def _is_paddle_file(path: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# to-csv : paddle-meter -> readable CSV
+# to-csv : paddlesense -> readable CSV
 # ---------------------------------------------------------------------------
 
 
-def paddle_to_readable(
+def paddlesense_to_readable(
     src: TextIO,
     dst: TextIO,
     *,
     precision: int = 6,
     derived: bool = True,
 ) -> int:
-    """Convert a paddle-meter recording from *src* into a readable CSV on *dst*.
+    """Convert a paddlesense recording from *src* into a readable CSV on *dst*.
 
     Returns the number of samples written.
     """
@@ -243,7 +243,7 @@ def paddle_to_readable(
             # Column header row (t_us,ax,...). Emit our own header instead.
             saw_header = True
             dst.write(meta.header_line() + "\n")
-            dst.write("# generated by paddle_csv.py to-csv\n")
+            dst.write("# generated by paddlesense_csv.py to-csv\n")
             out.writerow(columns)
             continue
 
@@ -282,7 +282,7 @@ def paddle_to_readable(
 
 
 # ---------------------------------------------------------------------------
-# to-paddle : CSV -> paddle-meter
+# to-paddlesense : CSV -> paddlesense
 # ---------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ def _normalise(name: str) -> str:
 
 
 def _resolve_columns(header: Iterable[str], time_unit: str) -> _ColumnMap:
-    """Map a CSV header row to paddle-meter fields."""
+    """Map a CSV header row to paddlesense fields."""
     cmap = _ColumnMap()
     for idx, raw in enumerate(header):
         name = _normalise(raw)
@@ -319,7 +319,7 @@ def _to_micros(value: float, unit: str) -> int:
     return int(round(value))
 
 
-def csv_to_paddle(
+def csv_to_paddlesense(
     src: TextIO,
     dst: TextIO,
     *,
@@ -328,7 +328,7 @@ def csv_to_paddle(
     precision: int = 4,
     gyro_precision: int = 2,
 ) -> int:
-    """Convert a CSV from *src* into a paddle-meter recording on *dst*.
+    """Convert a CSV from *src* into a paddlesense recording on *dst*.
 
     Column names are matched case-insensitively against a set of aliases
     (``t_us``/``time_s``/``ax``/``accel_x``/``gx``/``gyro_x``/…). If no time
@@ -380,7 +380,7 @@ def csv_to_paddle(
             + f"\n  header was: {','.join(header)}"
         )
 
-    # Write the paddle header.
+    # Write the paddlesense header.
     dst.write(meta.header_line() + "\n")
     dst.write(",".join(COLUMNS) + "\n")
 
@@ -423,8 +423,8 @@ def csv_to_paddle(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="paddle_csv.py",
-        description="Convert paddle-meter recordings to/from a readable CSV.",
+        prog="paddlesense_csv.py",
+        description="Convert paddlesense recordings to/from a readable CSV.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -436,7 +436,7 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="output file, or '-' for stdout (default: stdout)")
 
     p_to = sub.add_parser(
-        "to-csv", help="paddle-meter recording -> readable CSV")
+        "to-csv", help="paddlesense recording -> readable CSV")
     add_common(p_to)
     p_to.add_argument("--precision", type=int, default=6,
                       help="decimal places for values (default: 6)")
@@ -444,7 +444,7 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="omit accel_mag / gyro_mag columns")
 
     p_from = sub.add_parser(
-        "to-paddle", help="CSV -> paddle-meter recording")
+        "to-paddlesense", help="CSV -> paddlesense recording")
     add_common(p_from)
     p_from.add_argument("--rate", type=int, default=None,
                         help="sample rate in Hz (default: from header or 200)")
@@ -477,11 +477,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
 
     if args.command == "auto":
-        args.command = "to-csv" if _is_paddle_file(args.input) else "to-paddle"
+        args.command = "to-csv" if _is_paddlesense_file(args.input) else "to-paddlesense"
 
     with _open_text(args.input, "r") as src, _open_text(args.output, "w") as dst:
         if args.command == "to-csv":
-            n = paddle_to_readable(
+            n = paddlesense_to_readable(
                 src, dst,
                 precision=args.precision,
                 derived=not getattr(args, "no_derived", False),
@@ -499,14 +499,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                 meta.version = args.version
             if getattr(args, "dropped", None) is not None:
                 meta.dropped = args.dropped
-            n = csv_to_paddle(
+            n = csv_to_paddlesense(
                 src, dst,
                 meta=meta,
                 time_unit=args.time_unit,
                 precision=args.precision,
                 gyro_precision=getattr(args, "gyro_precision", 2),
             )
-            verb = "rows -> paddle-meter recording"
+            verb = "rows -> paddlesense recording"
 
     if args.output != "-":
         print(f"wrote {n} {verb} to {args.output}", file=sys.stderr)

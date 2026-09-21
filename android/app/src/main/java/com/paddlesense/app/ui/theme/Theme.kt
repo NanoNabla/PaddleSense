@@ -1,4 +1,4 @@
-package com.paddlemeter.app.ui.theme
+package com.paddlesense.app.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -24,7 +24,7 @@ private val DarkColors = darkColorScheme(
 )
 
 @Composable
-fun PaddleMeterTheme(
+fun PaddleSenseTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,

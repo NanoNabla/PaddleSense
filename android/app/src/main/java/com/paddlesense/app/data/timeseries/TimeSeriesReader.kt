@@ -1,4 +1,4 @@
-package com.paddlemeter.app.data.timeseries
+package com.paddlesense.app.data.timeseries
 
 import java.io.File
 
@@ -32,7 +32,7 @@ data class TimeSeries(
 )
 
 /**
- * Parses paddle-meter CSV recordings.
+ * Parses paddlesense CSV recordings.
  *
  * This is the extension point for the future on-phone processing feature:
  * downstream code can consume [TimeSeries] without knowing the file format.
@@ -82,8 +82,8 @@ object TimeSeriesReader {
     }
 
     private fun parseMetaLine(line: String, current: TimeSeriesMeta): TimeSeriesMeta {
-        // "# paddle-meter v1 rate=200 arange=4g grange=500dps"
-        if (line.contains("paddle-meter")) {
+        // "# paddlesense v1 rate=200 arange=4g grange=500dps"
+        if (line.contains("paddlesense")) {
             val tokens = line.removePrefix("#").trim().split(' ')
             var version = current.version
             var rate = current.rateHz

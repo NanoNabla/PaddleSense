@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.paddlemeter.app"
+    namespace = "com.paddlesense.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.paddlemeter.app"
+        applicationId = "com.paddlesense.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

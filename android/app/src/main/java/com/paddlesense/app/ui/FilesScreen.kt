@@ -1,4 +1,4 @@
-package com.paddlemeter.app.ui
+package com.paddlesense.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,8 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.paddlemeter.app.data.model.RemoteFile
-import com.paddlemeter.app.viewmodel.UiState
+import com.paddlesense.app.data.model.RemoteFile
+import com.paddlesense.app.viewmodel.UiState
 
 /**
  * Recording management screen: start/stop, list remote files, download with

@@ -1,4 +1,4 @@
-package com.paddlemeter.app.data.model
+package com.paddlesense.app.data.model
 
 /** A recording file present on the ESP32. */
 data class RemoteFile(

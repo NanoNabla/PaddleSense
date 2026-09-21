@@ -1,4 +1,4 @@
-# paddle-meter v1 rate=200 arange=4g grange=500dps
+# paddlesense v1 rate=200 arange=4g grange=500dps
 t_us,ax,ay,az,gx,gy,gz
 0,0.1234,-9.8012,0.4321,1.20,-0.50,3.10
 5000,0.1300,-9.7900,0.4400,1.25,-0.48,3.05

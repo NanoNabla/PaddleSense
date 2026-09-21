@@ -1,7 +1,7 @@
-package com.paddlemeter.app.bluetooth
+package com.paddlesense.app.bluetooth
 
-import com.paddlemeter.app.data.model.DeviceStatus
-import com.paddlemeter.app.data.model.RemoteFile
+import com.paddlesense.app.data.model.DeviceStatus
+import com.paddlesense.app.data.model.RemoteFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -9,10 +9,10 @@ import java.io.OutputStream
 import java.util.zip.CRC32
 
 /**
- * Client implementation of the paddle-meter line protocol (see
+ * Client implementation of the paddlesense line protocol (see
  * docs/architecture.md §2.5). One command is in flight at a time.
  */
-class PaddleProtocol(private val conn: SerialConnection) {
+class PaddleSenseProtocol(private val conn: SerialConnection) {
 
     /** Thrown when the device answers with an `ERR ...` line. */
     class ProtocolException(message: String) : IOException(message)
@@ -61,7 +61,7 @@ class PaddleProtocol(private val conn: SerialConnection) {
         val files = ArrayList<RemoteFile>(count)
         repeat(count) {
             val line = conn.readLine() ?: throw IOException("Device disconnected")
-            // FILE pm_0001.csv 48210
+            // FILE ps_0001.csv 48210
             val parts = line.split(' ')
             if (parts.size >= 3 && parts[0] == "FILE") {
                 files.add(

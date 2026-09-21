@@ -1,4 +1,4 @@
-package com.paddlemeter.app
+package com.paddlesense.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,10 +9,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.paddlemeter.app.ui.DeviceScreen
-import com.paddlemeter.app.ui.FilesScreen
-import com.paddlemeter.app.ui.theme.PaddleMeterTheme
-import com.paddlemeter.app.viewmodel.FilesViewModel
+import com.paddlesense.app.ui.DeviceScreen
+import com.paddlesense.app.ui.FilesScreen
+import com.paddlesense.app.ui.theme.PaddleSenseTheme
+import com.paddlesense.app.viewmodel.FilesViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            PaddleMeterTheme {
+            PaddleSenseTheme {
                 val state by viewModel.state.collectAsState()
                 var showFiles by remember { mutableStateOf(false) }
 

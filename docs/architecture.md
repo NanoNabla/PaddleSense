@@ -1,4 +1,7 @@
-# Paddle Meter — System Architecture
+# PaddleSense — System Architecture
+
+> The wire protocol, recording file format, and CRC-32 spec are defined in
+> [`protocol.md`](protocol.md) — the contract shared by the firmware and the app.
 
 Data-logger + wireless file-transfer system: an ESP32 samples an MPU-6050 at high rate, records
 time series to an SD card, and serves the recorded files over Bluetooth Classic (SPP) to an
@@ -111,11 +114,11 @@ on the USB serial console at boot.
 
 ### 2.5 File format & naming
 
-- Directory `/data`, files `pm_0001.csv`, `pm_0002.csv`, … index persisted in NVS
+- Directory `/data`, files `ps_0001.csv`, `ps_0002.csv`, … index persisted in NVS
   (`Preferences`), survives reboots.
 - Header lines:
   ```
-  # paddle-meter v1 rate=200 arange=4g grange=500dps
+  # paddlesense v1 rate=200 arange=4g grange=500dps
   t_us,ax,ay,az,gx,gy,gz
   ```
 - Data lines: `1234567,0.1234,-9.8012,0.4321,1.20,-0.50,3.10`
@@ -124,7 +127,7 @@ on the USB serial console at boot.
 ### 2.6 Bluetooth service (SPP / RFCOMM)
 
 `BluetoothSerial`, well-known SPP UUID `00001101-0000-1000-8000-00805F9B34FB`, device name
-`paddle-meter`. Line-based ASCII protocol, `\n` terminated. RFCOMM provides reliability and
+`paddlesense`. Line-based ASCII protocol, `\n` terminated. RFCOMM provides reliability and
 flow control, so file streaming relies on blocking writes (no per-chunk ACK needed); integrity
 is verified end-to-end with CRC-32 (poly `0xEDB88320`, identical to `java.util.zip.CRC32`).
 
@@ -132,9 +135,9 @@ is verified end-to-end with CRC-32 (poly `0xEDB88320`, identical to `java.util.z
 |---|---|---|
 | `PING` | `PONG` | liveness check |
 | `STATUS` | `STATUS recording=0 rate=200 files=3 free_kb=2713600 dropped=0 version=1` | current state |
-| `LIST` | `FILES 3` then 3× `FILE pm_0001.csv 48210` then `OK` | name + size in bytes |
-| `GET pm_0001.csv` | `BEGIN 48210` → **48210 raw bytes** → `END 1A2B3C4D` | binary stream; on error before data: `ERR msg` |
-| `DEL pm_0001.csv` | `DELETED` or `ERR msg` | phone deletes only after verified download |
+| `LIST` | `FILES 3` then 3× `FILE ps_0001.csv 48210` then `OK` | name + size in bytes |
+| `GET ps_0001.csv` | `BEGIN 48210` → **48210 raw bytes** → `END 1A2B3C4D` | binary stream; on error before data: `ERR msg` |
+| `DEL ps_0001.csv` | `DELETED` or `ERR msg` | phone deletes only after verified download |
 | `START` | `STARTED` or `ERR msg` | begin recording session (opens new file) |
 | `STOP` | `STOPPED` | close file, write footer |
 | `RATE 500` | `RATE 500` | clamp 50–1000, applies to next START |
@@ -146,14 +149,14 @@ Download sequence:
 sequenceDiagram
     participant A as Android App
     participant E as ESP32
-    A->>E: GET pm_0001.csv
+    A->>E: GET ps_0001.csv
     E-->>A: BEGIN 48210
     loop size bytes
         E-->>A: raw binary chunks
     end
     E-->>A: END 1A2B3C4D
     A->>A: verify size + CRC32
-    A->>E: DEL pm_0001.csv
+    A->>E: DEL ps_0001.csv
     E-->>A: DELETED
 ```
 
@@ -169,7 +172,7 @@ sequenceDiagram
 ## 3. Android App Architecture
 
 Kotlin, Jetpack Compose (Material 3), MVVM, coroutines + StateFlow.
-`minSdk 26`, `compileSdk/targetSdk 34`. Package `com.paddlemeter.app`.
+`minSdk 26`, `compileSdk/targetSdk 34`. Package `com.paddlesense.app`.
 
 ### 3.1 Layers
 
@@ -177,7 +180,7 @@ Kotlin, Jetpack Compose (Material 3), MVVM, coroutines + StateFlow.
 flowchart TD
     UI[Compose Screens - DeviceScreen FilesScreen] --> VM[FilesViewModel - StateFlow UiState]
     VM --> REPO[RecordingRepository]
-    REPO --> PROTO[PaddleProtocol - command framing CRC check]
+    REPO --> PROTO[PaddleSenseProtocol - command framing CRC check]
     PROTO --> CONN[SerialConnection - RFCOMM socket IO]
     REPO --> STORE[Local file store - app external files dir]
     REPO --> READER[TimeSeriesReader - CSV parser - stub for future processing]
@@ -188,8 +191,8 @@ flowchart TD
 | Component | File | Responsibility |
 |---|---|---|
 | `SerialConnection` | `bluetooth/SerialConnection.kt` | Connect `BluetoothSocket` (SPP UUID), wrapped streams, `readLine()`, `readFully(n)`, `writeLine()`; all I/O on `Dispatchers.IO` |
-| `PaddleProtocol` | `bluetooth/PaddleProtocol.kt` | Implements the command table above; `list()`, `status()`, `start()`, `stop()`, `rate(hz)`, `delete(name)`, `download(name, out, onProgress)` with CRC-32 verification |
-| `RecordingRepository` | `data/RecordingRepository.kt` | Connection lifecycle, maps protocol results to UI models, saves downloads to `getExternalFilesDir(DIRECTORY_DOCUMENTS)/paddlemeter`, triggers auto-delete after verified transfer |
+| `PaddleSenseProtocol` | `bluetooth/PaddleSenseProtocol.kt` | Implements the command table above; `list()`, `status()`, `start()`, `stop()`, `rate(hz)`, `delete(name)`, `download(name, out, onProgress)` with CRC-32 verification |
+| `RecordingRepository` | `data/RecordingRepository.kt` | Connection lifecycle, maps protocol results to UI models, saves downloads to `getExternalFilesDir(DIRECTORY_DOCUMENTS)/paddlesense`, triggers auto-delete after verified transfer |
 | `FilesViewModel` | `viewmodel/FilesViewModel.kt` | `UiState` (connection, status, file list, per-file transfer progress), user intents |
 | `DeviceScreen` / `FilesScreen` | `ui/` | Paired-device picker; file list with size, download button + `LinearProgressIndicator`, delete button, refresh, START/STOP, rate dialog |
 | `TimeSeriesReader` | `data/timeseries/TimeSeriesReader.kt` | Parses downloaded CSV into `List<TimeSeriesSample>` — clean extension point for the later processing feature |
@@ -216,7 +219,7 @@ flowchart TD
 ## 4. Project Layout
 
 ```
-paddle-meter/
+paddlesense/
 ├── firmware/                          # PlatformIO project
 │   ├── platformio.ini
 │   ├── include/config.h               # pins, rates, protocol constants
@@ -236,10 +239,10 @@ paddle-meter/
 │       └── src/main/
 │           ├── AndroidManifest.xml
 │           ├── res/values/{strings,themes}.xml
-│           └── java/com/paddlemeter/app/
+│           └── java/com/paddlesense/app/
 │               ├── MainActivity.kt
 │               ├── bluetooth/SerialConnection.kt
-│               ├── bluetooth/PaddleProtocol.kt
+│               ├── bluetooth/PaddleSenseProtocol.kt
 │               ├── data/RecordingRepository.kt
 │               ├── data/model/Models.kt
 │               ├── data/timeseries/TimeSeriesReader.kt
@@ -253,7 +256,7 @@ paddle-meter/
 
 ## 5. Build & Run
 
-**Firmware**: open `firmware/` in VS Code + PlatformIO → `Upload` → pair `paddle-meter` in
+**Firmware**: open `firmware/` in VS Code + PlatformIO → `Upload` → pair `paddlesense` in
 Android Bluetooth settings.
 
 **App**: open `android/` in Android Studio → Run on device → grant Bluetooth permission →

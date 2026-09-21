@@ -1,4 +1,4 @@
-// config.h — compile-time configuration for the paddle-meter firmware.
+// config.h — compile-time configuration for the paddlesense firmware.
 #pragma once
 
 #include <Arduino.h>
@@ -7,7 +7,7 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_VERSION "1"
-#define BT_DEVICE_NAME "paddle-meter"
+#define BT_DEVICE_NAME "paddlesense"
 
 // ---------------------------------------------------------------------------
 // Pin map (see docs/architecture.md §1)
@@ -70,7 +70,7 @@
 
 #define CONFIG_PATH "/config.txt"
 #define DATA_DIR "/data"
-#define FILE_PREFIX "pm_"
+#define FILE_PREFIX "ps_"
 #define FILE_SUFFIX ".csv"
 
 // ---------------------------------------------------------------------------
@@ -92,5 +92,5 @@
 // ---------------------------------------------------------------------------
 #define PROTO_LINE_MAX 128  // max command line length
 #define PROTO_TX_CHUNK 1024 // bytes per SPP write during file streaming
-#define NVS_NAMESPACE "paddlemtr"
+#define NVS_NAMESPACE "paddlesense"
 #define NVS_KEY_FILE_INDEX "file_idx"

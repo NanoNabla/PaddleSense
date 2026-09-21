@@ -1,4 +1,4 @@
-// main.cpp — paddle-meter firmware entry point.
+// main.cpp — paddlesense firmware entry point.
 //
 // Brings up the sensor, SD card and Bluetooth SPP service, then creates the
 // three FreeRTOS tasks that do the actual work:
@@ -47,7 +47,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("=== paddle-meter ===");
+  Serial.println("=== paddlesense ===");
   Serial.printf("firmware v%s\n", FW_VERSION);
 
   pinMode(PIN_STATUS_LED, OUTPUT);
