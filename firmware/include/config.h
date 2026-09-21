@@ -60,16 +60,16 @@
 // ---------------------------------------------------------------------------
 // Ring buffer / storage
 // ---------------------------------------------------------------------------
-#define RING_CAPACITY 1024 // samples (~24 KB)
+#define RING_CAPACITY 512 // samples (~12 KB)
 
 // Static text accumulation buffer. Must hold at least one full CSV line plus
 // the write threshold so a single line always fits without splitting.
-#define SD_TEXT_BUF_MAX 32768 // 32 KB
+#define SD_TEXT_BUF_MAX 16384 // 16 KB
 
 // Defaults for the runtime-tunable storage settings. These can be overridden
 // at boot by a /config.txt file on the SD card (see settings.h); the compiled
 // values below are used for any key that is missing or invalid.
-#define SD_WRITE_THRESHOLD_DEFAULT 24576  // write to SD at >= 24 KB
+#define SD_WRITE_THRESHOLD_DEFAULT 12288  // write to SD at >= 12 KB
 #define SD_WRITE_INTERVAL_MS_DEFAULT 2000 // ...or every 2 s, whichever first
 #define SD_FLUSH_INTERVAL_MS_DEFAULT 2000 // fsync cadence (bounds data loss)
 
