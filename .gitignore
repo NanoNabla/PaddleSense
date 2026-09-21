@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# PaddleSense / Paddle Meter
+# ---------------------------------------------------------------------------
+
+# -------------------------------
+# OS / Editor / IDE
+# -------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# -------------------------------
+# Firmware (PlatformIO)
+# -------------------------------
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+firmware/.clangd
+firmware/.gcc-flags.json
+firmware/.vscode/
+firmware/*.elf
+firmware/*.bin
+firmware/*.hex
+firmware/*.map
+
+# -------------------------------
+# Android / Gradle
+# -------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/.cxx/
+android/.externalNativeBuild/
+android/.idea/
+android/*.iml
+android/app/*.iml
+android/.kotlin/
+android/release/
+android/debug/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jks
+*.keystore
+!android/gradle/wrapper/gradle-wrapper.jar
+
+# -------------------------------
+# Python (tools)
+# -------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+*.log
+
+# -------------------------------
+# Data / recordings / artifacts
+# -------------------------------
+*.csv
+!tools/tests/fixtures/*.csv
+*.bin
+*.dat
+recordings/
+output/
+tmp/
+temp/
+
+# -------------------------------
+# Secrets / local config
+# -------------------------------
+.env
+.env.*
+!.env.example
+secrets.*
+*.local
