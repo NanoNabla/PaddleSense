@@ -1,0 +1,51 @@
+package com.paddlemeter.app
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.paddlemeter.app.ui.DeviceScreen
+import com.paddlemeter.app.ui.FilesScreen
+import com.paddlemeter.app.ui.theme.PaddleMeterTheme
+import com.paddlemeter.app.viewmodel.FilesViewModel
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: FilesViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            PaddleMeterTheme {
+                val state by viewModel.state.collectAsState()
+                var showFiles by remember { mutableStateOf(false) }
+
+                if (showFiles && state.connected) {
+                    FilesScreen(
+                        state = state,
+                        onRefresh = viewModel::refresh,
+                        onStart = viewModel::startRecording,
+                        onStop = viewModel::stopRecording,
+                        onSetRate = viewModel::setRate,
+                        onDownload = viewModel::download,
+                        onDelete = viewModel::deleteRemote,
+                        onAutoDeleteChange = viewModel::setAutoDelete,
+                        onBack = { showFiles = false },
+                    )
+                } else {
+                    DeviceScreen(
+                        state = state,
+                        onConnect = viewModel::connect,
+                        onDisconnect = viewModel::disconnect,
+                        onContinue = { showFiles = true },
+                    )
+                }
+            }
+        }
+    }
+}

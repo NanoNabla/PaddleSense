@@ -1,0 +1,236 @@
+// storage_task.cpp — SD card writer.
+//
+// Consumes samples from the shared ring buffer and appends them to a CSV file
+// under /data. Text is accumulated in a RAM buffer and flushed to the card in
+// >= 2 KB blocks to avoid one SPI transaction per sample. A periodic flush()
+// bounds the amount of data lost if power is cut mid-session.
+#include "storage_task.h"
+
+#include "config.h"
+#include "recorder.h"
+#include <Preferences.h>
+#include <SD.h>
+#include <SPI.h>
+
+static SPIClass s_spi(VSPI);
+static File s_file;
+static bool s_sdReady = false;
+static bool s_fileOpen = false;
+static uint32_t s_fileIndex = 0;
+static uint32_t s_lastFlushMs = 0;
+static char s_currentName[32] = {0};
+
+// Text accumulation buffer.
+static char s_buf[SD_WRITE_THRESHOLD * 2];
+static size_t s_bufLen = 0;
+
+static Preferences s_prefs;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static void loadFileIndex() {
+  s_prefs.begin(NVS_NAMESPACE, false);
+  s_fileIndex = s_prefs.getUInt(NVS_KEY_FILE_INDEX, 0);
+  s_prefs.end();
+  Serial.printf("[storage] next file index = %u\n", s_fileIndex);
+}
+
+static void saveFileIndex() {
+  s_prefs.begin(NVS_NAMESPACE, false);
+  s_prefs.putUInt(NVS_KEY_FILE_INDEX, s_fileIndex);
+  s_prefs.end();
+}
+
+static void flushBuffer(bool force) {
+  if (!s_fileOpen || s_bufLen == 0) {
+    return;
+  }
+  if (!force && s_bufLen < SD_WRITE_THRESHOLD) {
+    return;
+  }
+  const size_t written = s_file.write((const uint8_t *)s_buf, s_bufLen);
+  if (written != s_bufLen) {
+    Serial.printf("[storage] short write %u/%u\n", (unsigned)written,
+                  (unsigned)s_bufLen);
+  }
+  s_bufLen = 0;
+}
+
+static void appendToBuffer(const char *text, size_t len) {
+  // The buffer is sized to hold at least one full line plus the threshold,
+  // so a single line always fits; flush first if it would overflow.
+  if (s_bufLen + len > sizeof(s_buf)) {
+    flushBuffer(true);
+  }
+  if (len > sizeof(s_buf)) {
+    // Pathological line; write directly.
+    s_file.write((const uint8_t *)text, len);
+    return;
+  }
+  memcpy(s_buf + s_bufLen, text, len);
+  s_bufLen += len;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+bool storageInit() {
+  s_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
+
+  if (!SD.begin(PIN_SD_CS, s_spi, 20000000)) {
+    Serial.println("[storage] SD mount failed");
+    s_sdReady = false;
+    return false;
+  }
+
+  s_sdReady = true;
+  if (!SD.exists(DATA_DIR)) {
+    SD.mkdir(DATA_DIR);
+  }
+  loadFileIndex();
+  Serial.printf("[storage] SD ready, %u KB free\n", (unsigned)storageFreeKb());
+  return true;
+}
+
+bool storageStartSession() {
+  if (!s_sdReady) {
+    return false;
+  }
+  if (s_fileOpen) {
+    return true;
+  }
+
+  // Build the next file name: /data/pm_0001.csv
+  snprintf(s_currentName, sizeof(s_currentName), "%s/%s%04u%s", DATA_DIR,
+           FILE_PREFIX, (unsigned)(s_fileIndex + 1), FILE_SUFFIX);
+
+  s_file = SD.open(s_currentName, FILE_WRITE);
+  if (!s_file) {
+    Serial.printf("[storage] cannot open %s\n", s_currentName);
+    return false;
+  }
+
+  s_fileIndex++;
+  saveFileIndex();
+
+  s_bufLen = 0;
+  s_lastFlushMs = millis();
+  s_fileOpen = true;
+
+  // Header
+  char header[128];
+  int n =
+      snprintf(header, sizeof(header),
+               "# paddle-meter v%s rate=%u arange=%dg grange=%ddps\n"
+               "t_us,ax,ay,az,gx,gy,gz\n",
+               FW_VERSION, g_recorder.rateHz(), ACCEL_RANGE_G, GYRO_RANGE_DPS);
+  appendToBuffer(header, (size_t)n);
+  flushBuffer(true);
+
+  Serial.printf("[storage] recording to %s\n", s_currentName);
+  return true;
+}
+
+void storageStopSession() {
+  if (!s_fileOpen) {
+    return;
+  }
+
+  // Drain anything still in the ring buffer before closing.
+  Sample s;
+  while (g_recorder.ring().pop(s)) {
+    char line[96];
+    int n = snprintf(line, sizeof(line), "%u,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f\n",
+                     (unsigned)s.tUs, s.ax, s.ay, s.az, s.gx, s.gy, s.gz);
+    appendToBuffer(line, (size_t)n);
+    g_recorder.countSample();
+  }
+
+  // Footer with integrity metadata.
+  char footer[96];
+  int n = snprintf(footer, sizeof(footer), "# samples=%u dropped=%u\n",
+                   (unsigned)g_recorder.sessionSamples(),
+                   (unsigned)g_recorder.ring().dropped());
+  appendToBuffer(footer, (size_t)n);
+
+  flushBuffer(true);
+  s_file.flush();
+  s_file.close();
+  s_fileOpen = false;
+
+  Serial.printf("[storage] closed %s (%u samples, %u dropped)\n", s_currentName,
+                (unsigned)g_recorder.sessionSamples(),
+                (unsigned)g_recorder.ring().dropped());
+}
+
+bool storageIsOpen() { return s_fileOpen; }
+
+int storageFileCount() {
+  if (!s_sdReady) {
+    return 0;
+  }
+  File dir = SD.open(DATA_DIR);
+  if (!dir || !dir.isDirectory()) {
+    return 0;
+  }
+  int count = 0;
+  File entry = dir.openNextFile();
+  while (entry) {
+    if (!entry.isDirectory()) {
+      count++;
+    }
+    entry = dir.openNextFile();
+  }
+  dir.close();
+  return count;
+}
+
+uint32_t storageFreeKb() {
+  if (!s_sdReady) {
+    return 0;
+  }
+  return (uint32_t)(SD.totalBytes() - SD.usedBytes()) / 1024u;
+}
+
+// ---------------------------------------------------------------------------
+// Task
+// ---------------------------------------------------------------------------
+
+void storageTask(void *param) {
+  (void)param;
+
+  for (;;) {
+    bool didWork = false;
+
+    if (s_fileOpen) {
+      // Drain up to a bounded number of samples per iteration so the
+      // task stays responsive to STOP requests.
+      Sample s;
+      int budget = 256;
+      while (budget-- > 0 && g_recorder.ring().pop(s)) {
+        char line[96];
+        int n =
+            snprintf(line, sizeof(line), "%u,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f\n",
+                     (unsigned)s.tUs, s.ax, s.ay, s.az, s.gx, s.gy, s.gz);
+        appendToBuffer(line, (size_t)n);
+        g_recorder.countSample();
+        didWork = true;
+      }
+
+      flushBuffer(false);
+
+      const uint32_t now = millis();
+      if (now - s_lastFlushMs >= SD_FLUSH_INTERVAL_MS) {
+        flushBuffer(true);
+        s_file.flush();
+        s_lastFlushMs = now;
+      }
+    }
+
+    // If there was nothing to do, sleep briefly to yield the CPU.
+    vTaskDelay(didWork ? 1 : pdMS_TO_TICKS(20));
+  }
+}
