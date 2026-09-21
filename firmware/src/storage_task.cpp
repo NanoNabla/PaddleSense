@@ -14,6 +14,7 @@
 #include <Preferences.h>
 #include <SD.h>
 #include <SPI.h>
+#include <atomic>
 
 static SPIClass s_spi(VSPI);
 static File s_file;
@@ -23,6 +24,12 @@ static uint32_t s_fileIndex = 0;
 static uint32_t s_lastWriteMs = 0;
 static uint32_t s_lastFlushMs = 0;
 static char s_currentName[32] = {0};
+
+// Live-tail support: total payload bytes durably written to the current file,
+// and a binary semaphore given after every write+fsync round (and on close) so
+// the BT tailer / HTTP server can be woken instead of busy-polling.
+static std::atomic<uint32_t> s_bytesWritten{0};
+static SemaphoreHandle_t s_flushSem = nullptr;
 
 // Runtime-tunable storage settings (defaults, overridable via /config.txt).
 static Settings s_settings;
@@ -63,6 +70,7 @@ static void flushBuffer(bool force) {
     Serial.printf("[storage] short write %u/%u\n", (unsigned)written,
                   (unsigned)s_bufLen);
   }
+  s_bytesWritten.fetch_add((uint32_t)written, std::memory_order_release);
   s_bufLen = 0;
 }
 
@@ -86,6 +94,9 @@ static void appendToBuffer(const char *text, size_t len) {
 // ---------------------------------------------------------------------------
 
 bool storageInit() {
+  if (s_flushSem == nullptr) {
+    s_flushSem = xSemaphoreCreateBinary();
+  }
   s_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
 
   if (!SD.begin(PIN_SD_CS, s_spi, 20000000)) {
@@ -130,6 +141,7 @@ bool storageStartSession() {
   saveFileIndex();
 
   s_bufLen = 0;
+  s_bytesWritten.store(0, std::memory_order_release);
   s_lastWriteMs = millis();
   s_lastFlushMs = millis();
   s_fileOpen = true;
@@ -175,6 +187,11 @@ void storageStopSession() {
   s_file.close();
   s_fileOpen = false;
 
+  // Wake any tailer so it can observe the final size and finish.
+  if (s_flushSem != nullptr) {
+    xSemaphoreGive(s_flushSem);
+  }
+
   Serial.printf("[storage] closed %s (%u samples, %u dropped)\n", s_currentName,
                 (unsigned)g_recorder.sessionSamples(),
                 (unsigned)g_recorder.ring().dropped());
@@ -208,6 +225,23 @@ uint32_t storageFreeKb() {
   }
   return (uint32_t)(SD.totalBytes() - SD.usedBytes()) / 1024u;
 }
+
+uint32_t storageBytesWritten() {
+  return s_bytesWritten.load(std::memory_order_acquire);
+}
+
+const char *storageCurrentName() {
+  if (!s_fileOpen) {
+    return "";
+  }
+  // s_currentName is "/data/ps_0005.csv"; return just the base name.
+  const char *base = strrchr(s_currentName, '/');
+  return base ? base + 1 : s_currentName;
+}
+
+SemaphoreHandle_t storageFlushSemaphore() { return s_flushSem; }
+
+const Settings &storageSettings() { return s_settings; }
 
 // ---------------------------------------------------------------------------
 // Task
@@ -243,10 +277,17 @@ void storageTask(void *param) {
           now - s_lastWriteMs >= s_settings.writeIntervalMs) {
         flushBuffer(true);
         s_lastWriteMs = now;
+        // fsync immediately after each write so a freshly opened handle (used
+        // by the BT tailer / HTTP server) sees the updated size right away.
+        s_file.flush();
+        s_lastFlushMs = now;
+        if (s_flushSem != nullptr) {
+          xSemaphoreGive(s_flushSem);
+        }
       }
 
-      // fsync on its own (usually slower) cadence to bound data loss if
-      // power is cut mid-session.
+      // Safety-net fsync on its own cadence in case no write happened above
+      // (e.g. very low sample rate) to bound data loss if power is cut.
       if (now - s_lastFlushMs >= s_settings.flushIntervalMs) {
         s_file.flush();
         s_lastFlushMs = now;

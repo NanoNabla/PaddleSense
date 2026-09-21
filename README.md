@@ -1,12 +1,14 @@
 # PaddleSense
 
 An ESP32 data logger that samples an MPU-6050 at high rate, stores time series
-on an SD card, and serves them over Bluetooth Classic (SPP) to an Android app
-that lists, downloads, verifies and then deletes the recordings.
+on an SD card, and serves them to an Android app that lists, downloads, verifies
+and then deletes the recordings. Transfer happens over **Bluetooth Classic
+(SPP)** — with an optional **live-tail** stream during recording — or over an
+on-demand **WiFi softAP + HTTP** mode for fast bulk downloads.
 
 ```
 ESP32 + MPU-6050 + SD card  ──Bluetooth Classic SPP──►  Android app
-   (sampling + storage)                                  (list/download/delete)
+   (sampling + storage)      ──WiFi softAP + HTTP────►  (list/download/delete)
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for the full design and
@@ -75,7 +77,7 @@ No external libraries are needed — `BluetoothSerial`, `SD`, `Wire` and
 ### File format
 
 ```
-# paddlesense v1 rate=200 arange=4g grange=500dps
+# paddlesense v2 rate=200 arange=4g grange=500dps
 t_us,ax,ay,az,gx,gy,gz
 1234567,0.1234,-9.8012,0.4321,1.20,-0.50,3.10
 ...
@@ -89,16 +91,35 @@ Acceleration in m/s², angular rate in deg/s, `t_us` = microseconds since boot.
 | Command | Reply |
 |---|---|
 | `PING` | `PONG` |
-| `STATUS` | `STATUS recording=0 rate=200 files=3 free_kb=2713600 dropped=0 version=1` |
+| `STATUS` | `STATUS recording=0 rate=200 files=3 free_kb=2713600 dropped=0 version=2 wifi=0 ip=- ssid=-` |
 | `LIST` | `FILES n`, then `FILE <name> <size>` ×n, then `OK` |
 | `GET <name>` | `BEGIN <size>`, raw bytes, `END <crc32>` |
+| `TAIL <name>` | `BEGIN ?`, then `DATA <n>` + n bytes ×n, then `END <crc32>` (live stream) |
+| `ENDTAIL` | `END ABORT` |
+| `MODE wifi` | `MODE wifi ssid=paddlesense ip=192.168.4.1` |
+| `MODE legacy` | `MODE legacy` |
 | `DEL <name>` | `DELETED` |
-| `START` | `STARTED` |
+| `START` | `STARTED ps_0005.csv` |
 | `STOP` | `STOPPED` |
 | `RATE <hz>` | `RATE <applied>` |
 
 Errors are reported as `ERR <reason>`. The CRC-32 uses the zlib polynomial and
 matches `java.util.zip.CRC32` on the phone.
+
+### WiFi transfer mode
+
+`MODE wifi` brings up a softAP (`paddlesense` / `paddlesense`, overridable via
+`/config.txt` keys `wifi_ssid` / `wifi_pass`) and a small HTTP server:
+
+| Endpoint | Response |
+|---|---|
+| `GET /files` | `FILE <name> <size>` lines, then `OK` |
+| `GET /files/<name>` | `200 OK` + `Content-Length` + raw bytes |
+| `GET /status` | JSON status document |
+
+Bluetooth Classic and WiFi share the same 2.4 GHz radio, so the app treats the
+modes as mutually exclusive: use WiFi for bulk transfer, Bluetooth for control
+and live tail. Deletion still happens over Bluetooth after a verified transfer.
 
 ---
 
@@ -119,9 +140,15 @@ matches `java.util.zip.CRC32` on the phone.
 3. Tap **Manage recordings**:
    - **Start / Stop** a recording session.
    - **Set rate** (50–1000 Hz) for the next session.
+   - **Live stream while recording** — when enabled, the recording is streamed
+     to the phone as it is written, so there is nothing left to download at
+     STOP. The CRC-32 is verified at the end.
    - Tap the download icon on a file — progress is shown, and on success the
      file is verified (size + CRC-32) and then **deleted on the device**
      (toggle "Delete on device after download" to keep it).
+   - **Enable WiFi transfer** — brings up the ESP32 access point; join it in
+     Android WiFi settings, then downloads use HTTP (~100× faster). The
+     download icon automatically uses WiFi while it is enabled.
    - Downloaded files are listed under "Downloaded to phone" and stored in the
      app-specific external files directory
      (`Android/data/com.paddlesense.app/files/Documents/paddlesense`).
@@ -161,7 +188,12 @@ tests with `python3 -m unittest discover -s tools/tests`.
 ## 5. Notes & limitations
 
 - Bluetooth Classic SPP throughput is roughly 10–50 KB/s, so multi-MB files
-  take a few minutes to transfer. This is intended for post-session download.
+  take a few minutes over Bluetooth. Use **WiFi transfer mode** for large files
+  (or **live stream** to avoid the post-session wait entirely).
+- Bluetooth Classic and WiFi share one 2.4 GHz radio; do not run a WiFi
+  download and a Bluetooth live tail at the same time.
+- The WiFi stack + HTTP server grow the firmware image, so the build uses the
+  `huge_app.csv` partition (3 MB app, no OTA).
 - FAT32 limits a single file to 4 GB (≈ 8+ hours at 200 Hz).
 - If the SD card stalls, the ring buffer drops the oldest samples; the count is
   reported in `STATUS` and written into the file footer.

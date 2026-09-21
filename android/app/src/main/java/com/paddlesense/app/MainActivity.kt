@@ -35,6 +35,10 @@ class MainActivity : ComponentActivity() {
                         onDownload = viewModel::download,
                         onDelete = viewModel::deleteRemote,
                         onAutoDeleteChange = viewModel::setAutoDelete,
+                        onLiveTailChange = viewModel::setLiveTail,
+                        onEnableWifi = viewModel::enableWifi,
+                        onDisableWifi = viewModel::disableWifi,
+                        onDownloadOverWifi = viewModel::downloadOverWifi,
                         onBack = { showFiles = false },
                     )
                 } else {

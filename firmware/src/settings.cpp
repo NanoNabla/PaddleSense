@@ -31,6 +31,25 @@ static char *trim(char *s) {
 // Apply one "key=value" line to `out`. Unknown keys and malformed values are
 // ignored (the default is kept). Returns true if a known key was applied.
 static bool applyKey(Settings &out, const char *key, const char *value) {
+  // String-valued keys are handled before the numeric parse below.
+  if (strcasecmp(key, "wifi_ssid") == 0) {
+    if (*value == '\0') {
+      return false;
+    }
+    strncpy(out.wifiSsid, value, sizeof(out.wifiSsid) - 1);
+    out.wifiSsid[sizeof(out.wifiSsid) - 1] = '\0';
+    return true;
+  }
+  if (strcasecmp(key, "wifi_pass") == 0) {
+    // WPA2 requires at least 8 characters; shorter values are rejected.
+    if (strlen(value) < 8) {
+      return false;
+    }
+    strncpy(out.wifiPass, value, sizeof(out.wifiPass) - 1);
+    out.wifiPass[sizeof(out.wifiPass) - 1] = '\0';
+    return true;
+  }
+
   // Parse the value as an unsigned integer; reject anything non-numeric.
   char *endp = nullptr;
   const long v = strtol(value, &endp, 10);
@@ -65,6 +84,10 @@ void settingsDefaults(Settings &out) {
   out.writeThreshold = SD_WRITE_THRESHOLD_DEFAULT;
   out.writeIntervalMs = SD_WRITE_INTERVAL_MS_DEFAULT;
   out.flushIntervalMs = SD_FLUSH_INTERVAL_MS_DEFAULT;
+  strncpy(out.wifiSsid, WIFI_AP_SSID_DEFAULT, sizeof(out.wifiSsid) - 1);
+  out.wifiSsid[sizeof(out.wifiSsid) - 1] = '\0';
+  strncpy(out.wifiPass, WIFI_AP_PASS_DEFAULT, sizeof(out.wifiPass) - 1);
+  out.wifiPass[sizeof(out.wifiPass) - 1] = '\0';
 }
 
 bool settingsLoad(Settings &out) {
@@ -121,7 +144,7 @@ bool settingsLoad(Settings &out) {
 
 void settingsLog(const Settings &s) {
   Serial.printf("[settings] write_threshold=%u write_interval_ms=%u "
-                "flush_interval_ms=%u\n",
+                "flush_interval_ms=%u wifi_ssid=%s\n",
                 (unsigned)s.writeThreshold, (unsigned)s.writeIntervalMs,
-                (unsigned)s.flushIntervalMs);
+                (unsigned)s.flushIntervalMs, s.wifiSsid);
 }

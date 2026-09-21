@@ -53,9 +53,14 @@ fun FilesScreen(
     onDownload: (RemoteFile) -> Unit,
     onDelete: (RemoteFile) -> Unit,
     onAutoDeleteChange: (Boolean) -> Unit,
+    onLiveTailChange: (Boolean) -> Unit,
+    onEnableWifi: () -> Unit,
+    onDisableWifi: () -> Unit,
+    onDownloadOverWifi: (RemoteFile) -> Unit,
     onBack: () -> Unit,
 ) {
     var showRateDialog by remember { mutableStateOf(false) }
+    var showWifiDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -109,6 +114,31 @@ fun FilesScreen(
                     Spacer(Modifier.height(0.dp))
                     Text("  Delete on device after download")
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = state.liveTail,
+                        onCheckedChange = onLiveTailChange,
+                        enabled = s?.recording != true,
+                    )
+                    Text("  Live stream while recording")
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.wifiBaseUrl == null) {
+                        OutlinedButton(
+                            onClick = { onEnableWifi(); showWifiDialog = true },
+                            enabled = !state.wifiBusy,
+                        ) { Text("Enable WiFi transfer") }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDisableWifi,
+                            enabled = !state.wifiBusy,
+                        ) { Text("Disable WiFi") }
+                    }
+                }
+                state.wifiBaseUrl?.let {
+                    Text("WiFi: $it", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
 
@@ -131,6 +161,20 @@ fun FilesScreen(
             Spacer(Modifier.height(12.dp))
         }
 
+        // Live-tail progress (indeterminate: total is unknown while recording)
+        state.liveTransfer?.let { t ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Live streaming to phone")
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(4.dp))
+                    Text("${t.received} bytes received")
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         state.message?.let {
             Text(it, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
@@ -148,7 +192,10 @@ fun FilesScreen(
                         trailingContent = {
                             Row {
                                 IconButton(
-                                    onClick = { onDownload(file) },
+                                    onClick = {
+                                        if (state.wifiBaseUrl != null) onDownloadOverWifi(file)
+                                        else onDownload(file)
+                                    },
                                     enabled = state.transfer == null,
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = "Download")
@@ -190,6 +237,44 @@ fun FilesScreen(
             },
         )
     }
+
+    if (showWifiDialog) {
+        WifiDialog(
+            ssid = state.status?.wifiSsid ?: "paddlesense",
+            ip = state.wifiBaseUrl,
+            onDismiss = { showWifiDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun WifiDialog(
+    ssid: String,
+    ip: String?,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("WiFi transfer") },
+        text = {
+            Column {
+                Text("Join this network in Android WiFi settings, then download files here:")
+                Spacer(Modifier.height(8.dp))
+                Text("SSID: $ssid", style = MaterialTheme.typography.bodyMedium)
+                Text("Password: paddlesense", style = MaterialTheme.typography.bodyMedium)
+                ip?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Server: $it", style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Android may warn that this network has no internet access — keep it connected.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+    )
 }
 
 @Composable

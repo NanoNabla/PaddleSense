@@ -2,7 +2,10 @@ package com.paddlesense.app.bluetooth
 
 import com.paddlesense.app.data.model.DeviceStatus
 import com.paddlesense.app.data.model.RemoteFile
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.OutputStream
@@ -49,6 +52,8 @@ class PaddleSenseProtocol(private val conn: SerialConnection) {
             freeKb = map["free_kb"]?.toLongOrNull() ?: 0L,
             dropped = map["dropped"]?.toLongOrNull() ?: 0L,
             version = map["version"] ?: "?",
+            wifiIp = map["ip"]?.takeIf { it != "-" && it.isNotEmpty() },
+            wifiSsid = map["ssid"]?.takeIf { it != "-" && it.isNotEmpty() },
         )
     }
 
@@ -79,8 +84,24 @@ class PaddleSenseProtocol(private val conn: SerialConnection) {
         return files
     }
 
-    suspend fun start(): String = command("START")
+    /**
+     * Start a recording session. Returns the name of the file the device opened
+     * (parsed from `STARTED <name>`), or null on v1 firmware that replies with a
+     * bare `STARTED`.
+     */
+    suspend fun start(): String? {
+        val line = command("START")
+        val name = line.removePrefix("STARTED").trim()
+        return name.ifEmpty { null }
+    }
+
     suspend fun stop(): String = command("STOP")
+
+    /**
+     * Switch the device transfer mode. [mode] is "wifi" or "legacy".
+     * Returns the device's confirmation line (e.g. `MODE wifi ssid=… ip=…`).
+     */
+    suspend fun mode(mode: String): String = command("MODE $mode")
 
     suspend fun setRate(hz: Int): Int {
         val line = command("RATE $hz")
@@ -141,5 +162,92 @@ class PaddleSenseProtocol(private val conn: SerialConnection) {
             )
         }
         received
+    }
+
+    /**
+     * Live-tail the currently open recording [name] into [out].
+     *
+     * Framing: `BEGIN ?` then repeated `DATA <n>` + n raw bytes, terminated by
+     * `END <crc32>` (or `END ABORT`). The CRC-32 is verified over all payload
+     * bytes, exactly like [download].
+     *
+     * @param stopSignal complete this to ask the device to stop recording; the
+     *   tail keeps reading until the final `END` and the trailing `STOPPED`.
+     * @param onProgress (bytesReceived, totalBytes) — total is 0 while unknown.
+     * @return the number of bytes written.
+     */
+    suspend fun tail(
+        name: String,
+        out: OutputStream,
+        stopSignal: CompletableDeferred<Unit>? = null,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): Long = withContext(Dispatchers.IO) {
+        conn.writeLine("TAIL $name")
+        val begin = conn.readLine() ?: throw IOException("Device disconnected")
+        if (begin.startsWith("ERR ")) {
+            throw ProtocolException(begin.removePrefix("ERR ").trim())
+        }
+        if (!begin.startsWith("BEGIN ")) {
+            throw ProtocolException("Unexpected TAIL reply: $begin")
+        }
+
+        val crc = CRC32()
+        var received = 0L
+        var stopSent = false
+
+        // Send STOP from a separate coroutine so it is not delayed by a blocking
+        // readLine() while the device is between flushes. Writing to the output
+        // stream is independent of reading the input stream, so this is safe.
+        val stopJob = stopSignal?.let { signal ->
+            launch {
+                signal.await()
+                conn.writeLine("STOP")
+                stopSent = true
+            }
+        }
+
+        try {
+            while (true) {
+                val line = conn.readLine() ?: throw IOException("Device disconnected")
+                when {
+                    line.startsWith("DATA ") -> {
+                        val n = line.removePrefix("DATA ").trim().toLongOrNull()
+                            ?: throw ProtocolException("Bad DATA length: $line")
+                        val got = conn.readFully(n) { buf, len ->
+                            out.write(buf, 0, len)
+                            crc.update(buf, 0, len)
+                            received += len
+                            onProgress(received, 0L)
+                        }
+                        if (got != n) {
+                            throw IOException("Short read in tail: got $got of $n bytes")
+                        }
+                    }
+                    line == "END ABORT" -> {
+                        out.flush()
+                        throw IOException("Tail aborted by device")
+                    }
+                    line.startsWith("END ") -> {
+                        out.flush()
+                        val remoteCrc = line.removePrefix("END ").trim().toLongOrNull(16)
+                            ?: throw ProtocolException("Bad CRC in: $line")
+                        if (remoteCrc != crc.value) {
+                            throw IOException(
+                                "CRC mismatch: local=%08X remote=%08X".format(crc.value, remoteCrc)
+                            )
+                        }
+                        // If we asked the device to stop, consume the trailing STOPPED.
+                        if (stopSent) {
+                            conn.readLine()
+                        }
+                        return@withContext received
+                    }
+                    else -> throw ProtocolException("Unexpected tail line: $line")
+                }
+            }
+            @Suppress("UNREACHABLE_CODE") received
+        } finally {
+            stopJob?.cancel()
+        }
     }
 }

@@ -6,8 +6,21 @@
 // ---------------------------------------------------------------------------
 // Firmware identity
 // ---------------------------------------------------------------------------
-#define FW_VERSION "1"
+#define FW_VERSION "2"
 #define BT_DEVICE_NAME "paddlesense"
+
+// ---------------------------------------------------------------------------
+// WiFi softAP (file transfer mode)
+// ---------------------------------------------------------------------------
+// The ESP32 brings up its own access point on demand (MODE wifi) so the phone
+// can download recordings over HTTP at ~100x the SPP throughput. The password
+// must be >= 8 chars for WPA2. Both can be overridden via /config.txt.
+#define WIFI_AP_SSID_DEFAULT "paddlesense"
+#define WIFI_AP_PASS_DEFAULT "paddlesense"
+#define WIFI_AP_CHANNEL 1
+#define WIFI_AP_MAX_CLIENTS 2
+#define WIFI_HTTP_PORT 80
+#define WIFI_HTTP_CHUNK 4096
 
 // ---------------------------------------------------------------------------
 // Pin map (see docs/architecture.md §1)
@@ -82,15 +95,20 @@
 #define STORAGE_TASK_PRIO 3
 #define BT_TASK_CORE 0
 #define BT_TASK_PRIO 2
+#define WIFI_TASK_CORE 0
+#define WIFI_TASK_PRIO 2
 
 #define SENSOR_TASK_STACK 4096
 #define STORAGE_TASK_STACK 8192
 #define BT_TASK_STACK 8192
+#define WIFI_TASK_STACK 8192
 
 // ---------------------------------------------------------------------------
 // Protocol
 // ---------------------------------------------------------------------------
 #define PROTO_LINE_MAX 128  // max command line length
-#define PROTO_TX_CHUNK 1024 // bytes per SPP write during file streaming
+#define PROTO_TX_CHUNK 4096 // bytes per SPP write during file streaming
 #define NVS_NAMESPACE "paddlesense"
 #define NVS_KEY_FILE_INDEX "file_idx"
+#define NVS_KEY_XFER_MODE                                                      \
+  "xfer_mode" // last selected transfer mode (0=legacy,1=wifi)

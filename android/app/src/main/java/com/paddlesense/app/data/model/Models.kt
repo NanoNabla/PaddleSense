@@ -21,7 +21,13 @@ data class DeviceStatus(
     val freeKb: Long,
     val dropped: Long,
     val version: String,
-)
+    /** AP IP address while WiFi transfer mode is active, else null (v2). */
+    val wifiIp: String? = null,
+    /** AP SSID while WiFi transfer mode is active, else null (v2). */
+    val wifiSsid: String? = null,
+) {
+    val wifiActive: Boolean get() = !wifiIp.isNullOrEmpty()
+}
 
 /** A file that has been downloaded to the phone. */
 data class LocalFile(

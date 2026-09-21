@@ -16,6 +16,10 @@ struct Settings {
   uint32_t writeIntervalMs;
   // fsync() cadence. Bounds how much data is lost if power is cut.
   uint32_t flushIntervalMs;
+  // WiFi softAP credentials for file-transfer mode (overridable via
+  // /config.txt keys wifi_ssid / wifi_pass). Password must be >= 8 chars.
+  char wifiSsid[33];
+  char wifiPass[65];
 };
 
 // Populate `out` with the compiled-in defaults.

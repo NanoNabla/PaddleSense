@@ -46,9 +46,12 @@ flowchart LR
         REC --> STO
         STO --> FILES[CSV files on SD]
         FILES --> BT
+        FILES --> WIFI[WiFi Task - softAP + HTTP]
+        STO -. flush semaphore .-> BT
         LED[Status LED] --> REC
     end
     PHONE[Android App] <--> BT
+    PHONE -. HTTP bulk transfer .-> WIFI
 ```
 
 ### 2.2 FreeRTOS tasks
@@ -56,8 +59,9 @@ flowchart LR
 | Task | Core | Priority | Period | Responsibility |
 |---|---|---|---|---|
 | `sensorTask` | 1 | 5 | `1000 / rate` ms (`vTaskDelayUntil`) | Burst-read 14 bytes from MPU-6050, convert to SI units, push `Sample` into ring buffer, count overflows |
-| `storageTask` | 1 | 3 | continuous | Drain ring buffer into a 32 KB text buffer, write to SD when it holds ≥ 24 KB **or** every 2 s (whichever first), `flush()` every 2 s, close + fsync on STOP. Thresholds are runtime-tunable via `/config.txt` |
-| `btTask` | 0 | 2 | continuous | Read SPP bytes, assemble lines, dispatch commands, stream files |
+| `storageTask` | 1 | 3 | continuous | Drain ring buffer into a 32 KB text buffer, write to SD when it holds ≥ 24 KB **or** every 2 s (whichever first), `flush()` after each write, close + fsync on STOP. Publishes a flush semaphore for live tail. Thresholds are runtime-tunable via `/config.txt` |
+| `btTask` | 0 | 2 | continuous | Read SPP bytes, assemble lines, dispatch commands, stream files, live-tail the open recording |
+| `wifiTask` | 0 | 2 | continuous | Service HTTP requests while the softAP is up (idle otherwise) |
 | `loopTask` (Arduino) | 1 | 1 | 100 ms | LED status pattern, watchdog-ish health reporting over USB serial |
 
 The Bluetooth stack runs on core 0; sensor + storage are pinned to core 1 so sampling jitter
@@ -105,6 +109,8 @@ These values can be overridden at boot by a plain-text `/config.txt` on the SD c
 write_threshold=24576
 write_interval_ms=2000
 flush_interval_ms=2000
+wifi_ssid=paddlesense
+wifi_pass=paddlesense
 ```
 
 The file is parsed once in `storageInit()` after the card is mounted. Blank lines and lines
@@ -131,19 +137,18 @@ on the USB serial console at boot.
 flow control, so file streaming relies on blocking writes (no per-chunk ACK needed); integrity
 is verified end-to-end with CRC-32 (poly `0xEDB88320`, identical to `java.util.zip.CRC32`).
 
+The full command table, `TAIL`/`MODE` framing, and the WiFi HTTP endpoints are defined in
+[`protocol.md`](protocol.md) §2. Summary of the v2 additions:
+
 | Phone sends | ESP replies | Behavior |
 |---|---|---|
-| `PING` | `PONG` | liveness check |
-| `STATUS` | `STATUS recording=0 rate=200 files=3 free_kb=2713600 dropped=0 version=1` | current state |
-| `LIST` | `FILES 3` then 3× `FILE ps_0001.csv 48210` then `OK` | name + size in bytes |
-| `GET ps_0001.csv` | `BEGIN 48210` → **48210 raw bytes** → `END 1A2B3C4D` | binary stream; on error before data: `ERR msg` |
-| `DEL ps_0001.csv` | `DELETED` or `ERR msg` | phone deletes only after verified download |
-| `START` | `STARTED` or `ERR msg` | begin recording session (opens new file) |
-| `STOP` | `STOPPED` | close file, write footer |
-| `RATE 500` | `RATE 500` | clamp 50–1000, applies to next START |
-| anything else | `ERR unknown_command` | |
+| `TAIL ps_0005.csv` | `BEGIN ?` → repeated `DATA <n>` + n bytes → `END <crc32>` | live stream of the open recording |
+| `ENDTAIL` | `END ABORT` | stop tailing, keep recording |
+| `MODE wifi` | `MODE wifi ssid=… ip=…` | bring up softAP + HTTP |
+| `MODE legacy` | `MODE legacy` | tear WiFi down |
+| `START` | `STARTED ps_0005.csv` | begin session (now names the file) |
 
-Download sequence:
+Download sequence (static `GET`):
 
 ```mermaid
 sequenceDiagram
@@ -159,6 +164,24 @@ sequenceDiagram
     A->>E: DEL ps_0001.csv
     E-->>A: DELETED
 ```
+
+### 2.6.1 Live tail (v2)
+
+`TAIL <name>` streams the currently open recording while it is still being
+written. The storage task publishes a binary semaphore after every write+fsync
+round; the BT task waits on it and forwards any newly written bytes as
+`DATA <n>` chunks. `STOP` during a tail closes the file, streams the remainder,
+sends `END <crc32>`, then `STOPPED`. This hides the end-of-session download
+latency entirely: when the user stops, the phone already holds the data.
+
+### 2.6.2 WiFi transfer (v2)
+
+`MODE wifi` brings up a softAP (`paddlesense`) and a small `WebServer` serving
+`GET /files`, `GET /files/<name>` and `GET /status`. The phone downloads over
+HTTP at ~100× the SPP throughput while Bluetooth stays connected for control
+and deletion. Because BT Classic and WiFi share one 2.4 GHz radio, the app
+treats the modes as mutually exclusive: WiFi for bulk transfer, BT for control
+and live tail.
 
 ### 2.7 Error handling
 
@@ -229,7 +252,8 @@ paddlesense/
 │       ├── sensor_task.h/.cpp         # MPU-6050 sampling
 │       ├── storage_task.h/.cpp        # SD writer, file naming, NVS index
 │       ├── settings.h/.cpp            # /config.txt parser + runtime settings
-│       ├── bt_service.h/.cpp          # SPP command protocol + CRC32
+│       ├── bt_service.h/.cpp          # SPP command protocol + CRC32 + live tail
+│       ├── wifi_service.h/.cpp        # softAP + HTTP file server (v2)
 │       └── recorder.h/.cpp            # shared state machine
 ├── android/                           # Android Studio project
 │   ├── settings.gradle.kts
@@ -276,7 +300,12 @@ connect → list/download/delete recordings.
 | Buffered, time/size-triggered SD writes | avoids one SPI transaction per sample; keeps write count moderate at any rate |
 | `/config.txt` on SD for tuning | user-editable without reflashing; defaults + clamping mean a bad file can't break recording |
 | App-specific external dir | no storage permission, files still user-accessible |
+| Live tail over BT (v2) | hides end-of-session download latency; reuses the existing SPP link and CRC-32 verification |
+| WiFi softAP + HTTP for bulk transfer (v2) | ~100× SPP throughput; no router needed; BT kept for control |
+| Modes mutually exclusive (v2) | BT Classic and WiFi share one 2.4 GHz radio — never stream both at full speed |
+| `huge_app.csv` partition (v2) | WiFi stack + HTTP server grow the image past the default app partition |
 
-Risks: RFCOMM throughput makes multi-MB transfers take minutes (acceptable for post-session
-download); MPU-6050 yaw drifts (no magnetometer) — irrelevant for raw-data logging; FAT32
-4 GB file limit ≈ >8 h at 200 Hz.
+Risks: RFCOMM throughput makes multi-MB transfers take minutes over BT (mitigated by the WiFi
+transfer mode); BT throughput drops while WiFi is up (mitigated by mutually exclusive modes);
+MPU-6050 yaw drifts (no magnetometer) — irrelevant for raw-data logging; FAT32 4 GB file limit
+≈ >8 h at 200 Hz.

@@ -10,6 +10,7 @@
 #include "config.h"
 #include "recorder.h"
 #include "storage_task.h"
+#include "wifi_service.h"
 #include <BluetoothSerial.h>
 #include <SD.h>
 
@@ -96,10 +97,12 @@ static void handleStatus() {
   char buf[PROTO_LINE_MAX];
   snprintf(
       buf, sizeof(buf),
-      "STATUS recording=%d rate=%u files=%d free_kb=%u dropped=%u version=%s",
+      "STATUS recording=%d rate=%u files=%d free_kb=%u dropped=%u version=%s "
+      "wifi=%d ip=%s ssid=%s",
       g_recorder.isRecording() ? 1 : 0, g_recorder.rateHz(), storageFileCount(),
       (unsigned)storageFreeKb(), (unsigned)g_recorder.ring().dropped(),
-      FW_VERSION);
+      FW_VERSION, wifiActive() ? 1 : 0, wifiActive() ? wifiIp().c_str() : "-",
+      wifiActive() ? wifiSsid() : "-");
   sendLine(buf);
 }
 
@@ -198,6 +201,146 @@ static void handleGet(const char *name) {
   sendLine(buf);
 }
 
+// Stop the current session (shared by STOP and the tail loop). Returns true if
+// a session was actually stopped.
+static bool doStopSession() {
+  if (!g_recorder.isRecording()) {
+    return false;
+  }
+  g_recorder.setState(RecState::Idle);
+  storageStopSession();
+  return true;
+}
+
+// Live-tail: stream the currently open recording file to the phone while it is
+// still being written. Framing is BEGIN ? -> repeated (DATA <n> + n bytes) ->
+// END <crc32>. While tailing, only STOP and ENDTAIL are honored; any other
+// command line is ignored (a reply would corrupt the binary stream).
+static void handleTail(const char *name) {
+  if (strstr(name, "..") || strchr(name, '/') || strchr(name, '\\')) {
+    sendError("bad_name");
+    return;
+  }
+
+  // If the requested file is not the one currently open, fall back to a normal
+  // (static) download.
+  const bool isLive =
+      storageIsOpen() && strcmp(name, storageCurrentName()) == 0;
+  if (!isLive) {
+    handleGet(name);
+    return;
+  }
+
+  char path[64];
+  snprintf(path, sizeof(path), "%s/%s", DATA_DIR, name);
+
+  sendLine("BEGIN ?");
+
+  uint32_t crc = 0;
+  uint32_t sent = 0;
+  bool aborted = false;
+  bool stopped = false;
+  static uint8_t chunk[PROTO_TX_CHUNK];
+  char line[PROTO_LINE_MAX];
+
+  for (;;) {
+    if (!s_bt.connected()) {
+      return; // phone vanished; file stays on SD
+    }
+
+    // Honor STOP / ENDTAIL from the phone. A short timeout lets a command that
+    // arrives split across RFCOMM packets complete before we parse it.
+    if (s_bt.available()) {
+      const int n = readLine(line, sizeof(line), 50);
+      if (n > 0) {
+        if (strcasecmp(line, "STOP") == 0) {
+          stopped = doStopSession();
+        } else if (strcasecmp(line, "ENDTAIL") == 0) {
+          aborted = true;
+        }
+        // Any other command is intentionally ignored while tailing.
+      }
+    }
+
+    // Stream any newly written bytes.
+    const uint32_t written = storageBytesWritten();
+    if (written > sent) {
+      File f = SD.open(path, FILE_READ);
+      if (f) {
+        f.seek(sent);
+        while (sent < written) {
+          const size_t want = (written - sent) > sizeof(chunk)
+                                  ? sizeof(chunk)
+                                  : (written - sent);
+          const size_t got = f.read(chunk, want);
+          if (got == 0) {
+            break;
+          }
+          crc = crcUpdate(crc, chunk, got);
+          char hdr[24];
+          snprintf(hdr, sizeof(hdr), "DATA %u\n", (unsigned)got);
+          s_bt.print(hdr);
+          s_bt.write(chunk, got);
+          sent += got;
+        }
+        f.close();
+      }
+    }
+
+    // Done when the session has ended and all bytes have been sent.
+    if (!storageIsOpen() && sent >= storageBytesWritten()) {
+      break;
+    }
+    if (aborted) {
+      break;
+    }
+
+    // Wait for the storage task to publish more bytes (or time out to re-check
+    // the phone's control lines).
+    SemaphoreHandle_t sem = storageFlushSemaphore();
+    if (sem != nullptr) {
+      xSemaphoreTake(sem, pdMS_TO_TICKS(200));
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(50));
+    }
+  }
+
+  if (aborted) {
+    sendLine("END ABORT");
+    return;
+  }
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "END %08X", (unsigned)crc);
+  sendLine(buf);
+
+  // If the phone asked us to stop during the tail, confirm it now (after the
+  // binary stream is complete so the reply cannot be mistaken for payload).
+  if (stopped) {
+    sendLine("STOPPED");
+  }
+}
+
+static void handleMode(const char *arg) {
+  if (!arg || *arg == '\0' || strcasecmp(arg, "legacy") == 0) {
+    wifiStop();
+    sendLine("MODE legacy");
+    return;
+  }
+  if (strcasecmp(arg, "wifi") == 0) {
+    if (!wifiStart()) {
+      sendError("wifi_failed");
+      return;
+    }
+    char buf[PROTO_LINE_MAX];
+    snprintf(buf, sizeof(buf), "MODE wifi ssid=%s ip=%s", wifiSsid(),
+             wifiIp().c_str());
+    sendLine(buf);
+    return;
+  }
+  sendError("bad_mode");
+}
+
 static void handleDel(const char *name) {
   if (strstr(name, "..") || strchr(name, '/') || strchr(name, '\\')) {
     sendError("bad_name");
@@ -228,16 +371,16 @@ static void handleStart() {
   }
   g_recorder.beginSession();
   g_recorder.setState(RecState::Recording);
-  sendLine("STARTED");
+  char buf[PROTO_LINE_MAX];
+  snprintf(buf, sizeof(buf), "STARTED %s", storageCurrentName());
+  sendLine(buf);
 }
 
 static void handleStop() {
-  if (!g_recorder.isRecording()) {
+  if (!doStopSession()) {
     sendError("not_recording");
     return;
   }
-  g_recorder.setState(RecState::Idle);
-  storageStopSession();
   sendLine("STOPPED");
 }
 
@@ -285,6 +428,10 @@ static void dispatch(char *line) {
     handleList();
   } else if (strcasecmp(line, "GET") == 0) {
     handleGet(arg ? arg : "");
+  } else if (strcasecmp(line, "TAIL") == 0) {
+    handleTail(arg ? arg : "");
+  } else if (strcasecmp(line, "MODE") == 0) {
+    handleMode(arg);
   } else if (strcasecmp(line, "DEL") == 0) {
     handleDel(arg ? arg : "");
   } else if (strcasecmp(line, "START") == 0) {
