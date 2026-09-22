@@ -23,8 +23,18 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design and
 paddlesense/
 ├── firmware/     PlatformIO project (ESP32, Arduino framework)
 ├── android/      Android Studio project (Kotlin, Jetpack Compose)
+├── branding/     Source artwork + launcher-icon generator
 ├── tools/        Host-side helper scripts (CSV conversion)
 └── docs/         Architecture document
+```
+
+The Android launcher icons are generated from
+[`branding/PaddleSense.png`](branding/PaddleSense.png) by
+[`branding/generate_android_icons.py`](branding/generate_android_icons.py)
+(requires Pillow). Re-run it after changing the artwork:
+
+```bash
+python3 branding/generate_android_icons.py
 ```
 
 ---
@@ -132,6 +142,10 @@ and live tail. Deletion still happens over Bluetooth after a verified transfer.
 3. Run on a physical device (Bluetooth Classic is not available on emulators).
 
 `minSdk 26`, `targetSdk 34`, Kotlin + Jetpack Compose (Material 3).
+
+Prefer VS Code? See [`docs/vscode-android.md`](docs/vscode-android.md) for a
+ready-made setup (recommended extensions, build/install/debug tasks, and the
+toolchain install steps).
 
 ### Usage
 

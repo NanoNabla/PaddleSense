@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background layer for the adaptive launcher icon. Sampled from the
+         artwork's own background blue (branding/PaddleSense.png) so the
+         rounded corners of the artwork blend into the icon background. -->
+    <color name="ic_launcher_background">#249CED</color>
+</resources>
