@@ -10,12 +10,12 @@
 // friendly.
 struct Sample {
   uint32_t tUs; // microseconds since boot (wraps after ~71 min)
-  float ax;     // m/s^2
-  float ay;
-  float az;
-  float gx; // deg/s
-  float gy;
-  float gz;
+  int16_t ax;     // m/s^2
+  int16_t ay;
+  int16_t az;
+  int16_t gx; // deg/s
+  int16_t gy;
+  int16_t gz;
 };
 
 // Lock-free SPSC ring buffer.

@@ -168,9 +168,18 @@ void storageStopSession() {
   // Drain anything still in the ring buffer before closing.
   Sample s;
   while (g_recorder.ring().pop(s)) {
+
+    const float ax = (s.ax / ACCEL_LSB_PER_G) * 9.80665f;
+    const float ay = (s.ay / ACCEL_LSB_PER_G) * 9.80665f;
+    const float az = (s.az / ACCEL_LSB_PER_G) * 9.80665f;
+
+    const float gx = s.gx / GYRO_LSB_PER_DPS;
+    const float gy = s.gy / GYRO_LSB_PER_DPS;
+    const float gz = s.gz / GYRO_LSB_PER_DPS;
+
     char line[96];
     int n = snprintf(line, sizeof(line), "%u,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f\n",
-                     (unsigned)s.tUs, s.ax, s.ay, s.az, s.gx, s.gy, s.gz);
+                     (unsigned)s.tUs, ax, ay, az, gx, gy, gz);
     appendToBuffer(line, (size_t)n);
     g_recorder.countSample();
   }

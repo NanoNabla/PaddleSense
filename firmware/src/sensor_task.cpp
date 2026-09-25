@@ -95,12 +95,20 @@ static bool readSample(Sample &s) {
 
   constexpr float G = 9.80665f;
   s.tUs = micros();
+/*
   s.ax = (ax / ACCEL_LSB_PER_G) * G;
   s.ay = (ay / ACCEL_LSB_PER_G) * G;
   s.az = (az / ACCEL_LSB_PER_G) * G;
   s.gx = gx / GYRO_LSB_PER_DPS;
   s.gy = gy / GYRO_LSB_PER_DPS;
   s.gz = gz / GYRO_LSB_PER_DPS;
+*/
+  s.ax = ax;
+  s.ay = ay;
+  s.az = az;
+  s.gx = gx;
+  s.gy = gy;
+  s.gz = gz;
   return true;
 }
 
