@@ -70,14 +70,14 @@ void setup() {
   xTaskCreatePinnedToCore(sensorTask, "sensor", SENSOR_TASK_STACK, nullptr,
                           SENSOR_TASK_PRIO, nullptr, SENSOR_TASK_CORE);
 
-  xTaskCreatePinnedToCore(storageTask, "storage", STORAGE_TASK_STACK, nullptr,
-                          STORAGE_TASK_PRIO, nullptr, STORAGE_TASK_CORE);
+ xTaskCreatePinnedToCore(storageTask, "storage", STORAGE_TASK_STACK, nullptr,
+                         STORAGE_TASK_PRIO, nullptr, STORAGE_TASK_CORE);
 
   xTaskCreatePinnedToCore(btTask, "bt", BT_TASK_STACK, nullptr, BT_TASK_PRIO,
                           nullptr, BT_TASK_CORE);
 
   // WiFi HTTP server task. Idle (200 ms sleep) until MODE wifi brings the AP
-  // up.
+ // up.
   xTaskCreatePinnedToCore(wifiTask, "wifi", WIFI_TASK_STACK, nullptr,
                           WIFI_TASK_PRIO, nullptr, WIFI_TASK_CORE);
 

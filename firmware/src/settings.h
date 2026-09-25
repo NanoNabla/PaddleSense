@@ -6,6 +6,7 @@
 // from config.h, so a bad or absent file can never brick a recording session.
 #pragma once
 
+#include "config.h"
 #include <Arduino.h>
 
 struct Settings {
@@ -20,6 +21,9 @@ struct Settings {
   // /config.txt keys wifi_ssid / wifi_pass). Password must be >= 8 chars.
   char wifiSsid[33];
   char wifiPass[65];
+  // Bluetooth Classic SPP device name advertised to the phone (overridable via
+  // /config.txt key bt_name). Falls back to BT_DEVICE_NAME when absent.
+  char btName[BT_DEVICE_NAME_MAX + 1];
 };
 
 // Populate `out` with the compiled-in defaults.

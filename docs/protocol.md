@@ -21,7 +21,7 @@ live in separate repositories, both link back to this file.
 |---|---|
 | Profile | Bluetooth Classic SPP / RFCOMM |
 | SPP UUID | `00001101-0000-1000-8000-00805F9B34FB` |
-| Device name | `paddlesense` |
+| Device name | `paddlesense` (overridable via `/config.txt` key `bt_name`) |
 | Line terminator | `\n` (LF) |
 | Max command line | 128 bytes (`PROTO_LINE_MAX`) |
 | TX chunk size | 4096 bytes (`PROTO_TX_CHUNK`) |

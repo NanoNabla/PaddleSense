@@ -49,6 +49,16 @@ static bool applyKey(Settings &out, const char *key, const char *value) {
     out.wifiPass[sizeof(out.wifiPass) - 1] = '\0';
     return true;
   }
+  if (strcasecmp(key, "bt_name") == 0) {
+    // Bluetooth device name advertised over SPP. Empty values are rejected so
+    // the compiled-in default is kept.
+    if (*value == '\0') {
+      return false;
+    }
+    strncpy(out.btName, value, sizeof(out.btName) - 1);
+    out.btName[sizeof(out.btName) - 1] = '\0';
+    return true;
+  }
 
   // Parse the value as an unsigned integer; reject anything non-numeric.
   char *endp = nullptr;
@@ -88,6 +98,8 @@ void settingsDefaults(Settings &out) {
   out.wifiSsid[sizeof(out.wifiSsid) - 1] = '\0';
   strncpy(out.wifiPass, WIFI_AP_PASS_DEFAULT, sizeof(out.wifiPass) - 1);
   out.wifiPass[sizeof(out.wifiPass) - 1] = '\0';
+  strncpy(out.btName, BT_DEVICE_NAME, sizeof(out.btName) - 1);
+  out.btName[sizeof(out.btName) - 1] = '\0';
 }
 
 bool settingsLoad(Settings &out) {
@@ -144,7 +156,7 @@ bool settingsLoad(Settings &out) {
 
 void settingsLog(const Settings &s) {
   Serial.printf("[settings] write_threshold=%u write_interval_ms=%u "
-                "flush_interval_ms=%u wifi_ssid=%s\n",
+                "flush_interval_ms=%u wifi_ssid=%s bt_name=%s\n",
                 (unsigned)s.writeThreshold, (unsigned)s.writeIntervalMs,
-                (unsigned)s.flushIntervalMs, s.wifiSsid);
+                (unsigned)s.flushIntervalMs, s.wifiSsid, s.btName);
 }

@@ -450,11 +450,20 @@ static void dispatch(char *line) {
 // ---------------------------------------------------------------------------
 bool btInit() {
   crcInitTable();
-  if (!s_bt.begin(BT_DEVICE_NAME)) {
+
+  // Prefer the name configured in /config.txt (bt_name). When the SD card is
+  // absent or the mount failed, settingsLoad() never ran and the field is
+  // empty, so fall back to the compiled-in default.
+  const char *name = storageSettings().btName;
+  if (name[0] == '\0') {
+    name = BT_DEVICE_NAME;
+  }
+
+  if (!s_bt.begin(name)) {
     Serial.println("[bt] begin failed");
     return false;
   }
-  Serial.printf("[bt] SPP server '%s' ready\n", BT_DEVICE_NAME);
+  Serial.printf("[bt] SPP server '%s' ready\n", name);
   return true;
 }
 

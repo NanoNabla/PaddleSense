@@ -99,7 +99,7 @@ bool storageInit() {
   }
   s_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SD_CS);
 
-  if (!SD.begin(PIN_SD_CS, s_spi, 20000000)) {
+  if (!SD.begin(PIN_SD_CS, s_spi, 15000000)) {
     Serial.println("[storage] SD mount failed");
     s_sdReady = false;
     return false;

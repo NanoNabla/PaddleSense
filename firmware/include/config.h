@@ -7,7 +7,12 @@
 // Firmware identity
 // ---------------------------------------------------------------------------
 #define FW_VERSION "2"
+// Default Bluetooth Classic SPP device name. Overridable at boot via the
+// /config.txt key bt_name (see settings.h); this value is used when the key is
+// absent or the SD card is unavailable.
 #define BT_DEVICE_NAME "paddlesense"
+// Maximum length of a configured Bluetooth name (excluding the NUL terminator).
+#define BT_DEVICE_NAME_MAX 32
 
 // ---------------------------------------------------------------------------
 // WiFi softAP (file transfer mode)
@@ -42,7 +47,7 @@
 // ---------------------------------------------------------------------------
 // Sampling
 // ---------------------------------------------------------------------------
-#define DEFAULT_RATE_HZ 200
+#define DEFAULT_RATE_HZ 50
 #define MIN_RATE_HZ 50
 #define MAX_RATE_HZ 1000
 

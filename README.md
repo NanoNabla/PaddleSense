@@ -119,7 +119,9 @@ matches `java.util.zip.CRC32` on the phone.
 ### WiFi transfer mode
 
 `MODE wifi` brings up a softAP (`paddlesense` / `paddlesense`, overridable via
-`/config.txt` keys `wifi_ssid` / `wifi_pass`) and a small HTTP server:
+`/config.txt` keys `wifi_ssid` / `wifi_pass`) and a small HTTP server. The
+Bluetooth device name is likewise configurable via the `/config.txt` key
+`bt_name` (default `paddlesense`):
 
 | Endpoint | Response |
 |---|---|

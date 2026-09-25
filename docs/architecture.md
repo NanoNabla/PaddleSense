@@ -97,6 +97,9 @@ reaches a **size threshold** *or* a **time interval** elapses, whichever comes f
 | `write_threshold` | 24576 (24 KB) | 512 – 32768 | write the buffer once it holds this many bytes |
 | `write_interval_ms` | 2000 | 100 – 60000 | ...or once this long has elapsed since the last write |
 | `flush_interval_ms` | 2000 | 100 – 60000 | fsync cadence (data-loss window on power loss) |
+| `wifi_ssid` | `paddlesense` | ≤ 32 chars | WiFi softAP SSID for transfer mode |
+| `wifi_pass` | `paddlesense` | 8 – 64 chars | WiFi softAP password (WPA2) |
+| `bt_name` | `paddlesense` | ≤ 32 chars | Bluetooth Classic SPP device name |
 
 At the default 200 Hz (~12 KB/s of text) the size threshold and the 2 s interval coincide, giving
 roughly one card write every 2 s. At 1000 Hz (~60 KB/s) the size threshold dominates and the
@@ -111,6 +114,7 @@ write_interval_ms=2000
 flush_interval_ms=2000
 wifi_ssid=paddlesense
 wifi_pass=paddlesense
+bt_name=paddlesense
 ```
 
 The file is parsed once in `storageInit()` after the card is mounted. Blank lines and lines
